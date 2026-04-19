@@ -1,0 +1,18 @@
+{
+  "short_name": "Yoozoo",
+  "name": "Yoozoo · Our Little Secret",
+  "description": "A private health tracker for two 🌺",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#D63864",
+  "background_color": "#FFF4F7"
+}
