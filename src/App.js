@@ -505,16 +505,29 @@ export default function App() {
         </div>
 
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-          {[
-            {label:t.nextPeriod,value:daysLeft===0?t.today:daysLeft===1?"Tomorrow":daysLeft?`${daysLeft} ${t.daysLater}`:"–"},
-            {label:t.cycleDay,value:todayCd?`Day ${todayCd}`:"–",bg:todaySc.bg,fg:todaySc.fg},
-            {label:t.pregnancyChance,value:todayProb.prob>0?`~${todayProb.prob}%`:"–",bg:todayProb.prob>0?RC[todayProb.label]?.bg:undefined,fg:todayProb.prob>0?RC[todayProb.label]?.fg:undefined},
-          ].map((c,i)=>(
-            <div key={i} style={{background:c.bg?`${c.bg}dd`:"#ffffff22",borderRadius:14,padding:"10px 10px"}}>
-              <div style={{color:c.fg||"#fffc",fontSize:9,marginBottom:3,letterSpacing:0.3}}>{c.label}</div>
-              <div style={{color:c.fg||"#fff",fontWeight:700,fontSize:13}}>{c.value}</div>
-            </div>
-          ))}
+          <div style={{background:"#ffffff22",borderRadius:14,padding:"10px 10px"}}>
+            <div style={{color:"#fffc",fontSize:9,marginBottom:3,letterSpacing:0.3}}>{t.nextPeriod}</div>
+            <div style={{color:"#fff",fontWeight:700,fontSize:13}}>{daysLeft===0?t.today:daysLeft===1?"Tomorrow":daysLeft?`${daysLeft} ${t.daysLater}`:"–"}</div>
+          </div>
+          <div style={{background:todaySc.bg?`${todaySc.bg}dd`:"#ffffff22",borderRadius:14,padding:"10px 10px"}}>
+            <div style={{color:todaySc.fg||"#fffc",fontSize:9,marginBottom:3,letterSpacing:0.3}}>{t.cycleDay}</div>
+            <div style={{color:todaySc.fg||"#fff",fontWeight:700,fontSize:13}}>{todayCd?`Day ${todayCd}`:"–"}</div>
+          </div>
+          {(()=>{
+            const phaseLabelMap={ovulation:"high",fertile:"mid",period:"low",predicted:"low",safe:"safe"};
+            const phaseKey=phaseLabelMap[todayStatus]||"safe";
+            const phaseRc=RC[phaseKey]||RC.safe;
+            const phaseVal=({ovulation:"~25%",fertile:"~10%",period:"~1%",predicted:"~1%",safe:"~2%"})[todayStatus]||"~2%";
+            const todayIntimate=(intimateLogs||[]).filter(x=>x.date===todayStr());
+            const actProb=todayIntimate.length>0?calcPregnancyProb(todayStr(),allCycles,avgLength,avgPeriod,intimateLogs):null;
+            return (
+              <div style={{background:`${phaseRc.bg}dd`,borderRadius:14,padding:"8px 10px"}}>
+                <div style={{color:phaseRc.fg,fontSize:9,marginBottom:2,letterSpacing:0.3}}>{t.pregnancyChance}</div>
+                <div style={{color:phaseRc.fg,fontWeight:700,fontSize:12}}>{phaseVal}</div>
+                {actProb&&actProb.prob>0&&<div style={{color:RC[actProb.label]?.fg||"#fff",fontSize:9,marginTop:2,fontWeight:600}}>今日实际~{actProb.prob}%</div>}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
