@@ -387,7 +387,7 @@ export default function App() {
     </div>
   );
 
-  const { lang, mode, activeUser, actualPeriods, fahLogs, intimateLogs, messages, lastAIDate } = state;
+  const { lang, mode, activeUser, actualPeriods, fahLogs, intimateLogs, messages } = state;
   const t = T[lang] || T.en;
   const { avgLength, avgPeriod } = computeAdaptiveCycle(actualPeriods);
   const allCycles = buildAllCycles(actualPeriods, avgLength, avgPeriod);
@@ -470,8 +470,6 @@ export default function App() {
     return `${y} ${{en,zh,th}[lang][m]}`;
   };
 
-  const thisMonth=`${vm.year}-${pad2(vm.month+1)}`;
-  const monthIntimate=(intimateLogs||[]).filter(x=>x.date.startsWith(thisMonth));
   const visibleMessages=(messages||[]).filter(m=>!m.isAI||m.forUser===activeUser||!m.forUser);
   const TABS=[{id:"calendar",icon:"📅",label:t.calendar},{id:"stats",icon:"📊",label:t.stats},{id:"intimate",icon:"♥",label:t.intimate},{id:"messages",icon:"💌",label:t.messages}];
 
