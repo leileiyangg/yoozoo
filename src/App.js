@@ -527,7 +527,9 @@ function MsgBubble({ item, myRole, t, lang }) {
   const handleTranslate = async () => {
     if (translated) { setTranslated(null); return; }
     setLoading(true);
-    const result = await translateText(item.text, lang);
+    // Logic: zh→en, en/th→zh
+    const translateTo = lang === "zh" ? "en" : "zh";
+    const result = await translateText(item.text, translateTo);
     setTranslated(result);
     setLoading(false);
   };
