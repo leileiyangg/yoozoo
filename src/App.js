@@ -384,6 +384,7 @@ function CalendarGrid({year,month,allCycles,avgLength,avgPeriod,fahLogs,intimate
   const cells=[]; for(let i=0;i<first;i++) cells.push(null); for(let d=1;d<=days;d++) cells.push(d);
   const DOW={en:["S","M","T","W","T","F","S"],zh:["日","一","二","三","四","五","六"],th:["อา","จ","อ","พ","พฤ","ศ","ส"]};
   const intDates=new Set((intimateLogs||[]).map(x=>x.date));
+  const logDates=new Set(Object.keys(fahLogs||{}));
   return (
     <div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
@@ -396,13 +397,13 @@ function CalendarGrid({year,month,allCycles,avgLength,avgPeriod,fahLogs,intimate
           const {status}=getCycleStatus(ds,allCycles,avgLength,avgPeriod);
           const s=SC[status]||{};
           const isToday=ds===td, isSel=ds===selectedDay;
+          const hasLog=logDates.has(ds), hasInt=intDates.has(ds);
+          // Only show ONE dot — intimate takes priority over diary
+          const dotColor = hasInt?"#F585A5": hasLog?(s.dot||"#bbb"):null;
           return (
-            <button key={i} onClick={()=>onDayClick(ds)} style={{aspectRatio:"1",borderRadius:10,border:isSel?"2.5px solid #D63864":isToday?"2px solid #5B8AF0":"2px solid transparent",background:s.bg||(isToday?"#EEF2FF":"#FAFAFA"),color:s.fg||(isToday?"#5B8AF0":"#333"),fontWeight:isToday||isSel?700:400,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:1,transition:"all 0.12s"}}>
+            <button key={i} onClick={()=>onDayClick(ds)} style={{aspectRatio:"1",borderRadius:10,border:isSel?"2.5px solid #D63864":isToday?"2px solid #5B8AF0":"2px solid transparent",background:s.bg||(isToday?"#EEF2FF":"#FAFAFA"),color:s.fg||(isToday?"#5B8AF0":"#333"),fontWeight:isToday||isSel?700:400,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:1,transition:"all 0.12s",padding:0}}>
               {d}
-              <div style={{display:"flex",gap:2}}>
-                {(fahLogs||{})[ds]&&<span style={{fontSize:5,color:s.dot||"#ccc"}}>●</span>}
-                {intDates.has(ds)&&<span style={{fontSize:5,color:"#F585A5"}}>♥</span>}
-              </div>
+              {dotColor&&<span style={{fontSize:6,color:dotColor,lineHeight:1}}>{hasInt?"♥":"●"}</span>}
             </button>
           );
         })}
@@ -411,71 +412,142 @@ function CalendarGrid({year,month,allCycles,avgLength,avgPeriod,fahLogs,intimate
   );
 }
 
-// ─── LOG MODAL ────────────────────────────────────────────────────────────────
-function LogModal({dateStr,log,allCycles,avgLength,avgPeriod,t,lang,actualPeriods,onSave,onTogglePeriodStart,onTogglePeriodEnd,onClose}) {
+// ─── LOG MODAL — view first, then edit ───────────────────────────────────────
+function LogModal({dateStr,log,allCycles,avgLength,avgPeriod,t,lang,actualPeriods,intimateLogs,onSave,onTogglePeriodStart,onTogglePeriodEnd,onClose}) {
+  const [editing, setEditing] = useState(!log); // if no log yet, go straight to edit
   const [mood,setMood]=useState(log?.mood||"😊");
   const [syms,setSyms]=useState(log?.symptoms||[]);
   const [note,setNote]=useState(log?.note||"");
-  const {status}=getCycleStatus(dateStr,allCycles,avgLength,avgPeriod);
+  const {status,cd}=getCycleStatus(dateStr,allCycles,avgLength,avgPeriod);
   const s=SC[status]||{};
   const sl=statusLabel(status,t);
   const isStart=(actualPeriods||[]).some(p=>p.start===dateStr);
   const isEnd=(actualPeriods||[]).some(p=>p.end===dateStr);
+  const dayIntimate=(intimateLogs||[]).filter(x=>x.date===dateStr);
+  const prob=getBaseProb(status);
+  const probPct=`~${Math.round(prob*100)}%`;
+
+  // VIEW mode — shows status summary + existing records
+  const ViewMode = () => (
+    <div>
+      {/* Status card */}
+      <div style={{background:s.bg||"#f8f8f8",borderRadius:16,padding:"14px 16px",marginBottom:14,border:`1.5px solid ${s.fg||"#eee"}22`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontWeight:800,fontSize:18,color:s.fg||"#333"}}>{sl||"–"}</div>
+            {cd&&<div style={{fontSize:12,color:s.fg||"#aaa",opacity:0.8}}>{lang==="zh"?`周期第 ${cd} 天`:lang==="th"?`วันที่ ${cd}`:`Cycle Day ${cd}`}</div>}
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:22,fontWeight:900,color:s.fg||"#333"}}>{probPct}</div>
+            <div style={{fontSize:10,color:s.fg||"#aaa",opacity:0.7}}>{t.pregnancyChance}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Period mark buttons */}
+      <div style={{display:"flex",gap:8,marginBottom:14}}>
+        <button onClick={onTogglePeriodStart} style={{flex:1,padding:"9px 0",borderRadius:12,fontSize:11,fontWeight:600,cursor:"pointer",border:"none",background:isStart?"#D63864":"#FDE8EE",color:isStart?"#fff":"#D63864"}}>
+          🩸 {isStart?`✓ ${t.markPeriodStart}`:t.markPeriodStart}
+        </button>
+        <button onClick={onTogglePeriodEnd} style={{flex:1,padding:"9px 0",borderRadius:12,fontSize:11,fontWeight:600,cursor:"pointer",border:"none",background:isEnd?"#5B8AF0":"#EEF2FF",color:isEnd?"#fff":"#5B8AF0"}}>
+          ✓ {isEnd?`✓ ${t.markPeriodEnd}`:t.markPeriodEnd}
+        </button>
+      </div>
+
+      {/* Existing log summary */}
+      {log&&(
+        <div style={{background:"#fafafa",borderRadius:14,padding:"12px 14px",marginBottom:14}}>
+          <div style={{fontSize:10,color:"#bbb",fontWeight:700,marginBottom:8,letterSpacing:0.8,textTransform:"uppercase"}}>{lang==="zh"?"今日记录":lang==="th"?"บันทึกวันนี้":"Today's Log"}</div>
+          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+            <span style={{fontSize:22}}>{log.mood}</span>
+            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+              {(log.symptoms||[]).map(s=><span key={s} style={{background:"#FDE8EE",color:"#D63864",borderRadius:7,padding:"2px 8px",fontSize:10}}>{s}</span>)}
+            </div>
+          </div>
+          {log.note&&<div style={{fontSize:12,color:"#666",fontStyle:"italic"}}>"{log.note}"</div>}
+        </div>
+      )}
+
+      {/* Intimate records for this day */}
+      {dayIntimate.length>0&&(
+        <div style={{background:"#FFF5F8",borderRadius:14,padding:"12px 14px",marginBottom:14}}>
+          <div style={{fontSize:10,color:"#F585A5",fontWeight:700,marginBottom:8,letterSpacing:0.8,textTransform:"uppercase"}}>♥ {lang==="zh"?"亲密记录":lang==="th"?"บันทึกความใกล้ชิด":"Intimate"}</div>
+          {dayIntimate.map((rec,i)=>(
+            <div key={i} style={{fontSize:12,color:"#888",marginBottom:3}}>{rec.time} · {CONTRA_ICONS[rec.contraIndex]} {rec.note||""}</div>
+          ))}
+        </div>
+      )}
+
+      {/* Edit diary button */}
+      <button onClick={()=>setEditing(true)} style={{width:"100%",background:"linear-gradient(135deg,#D63864,#F07090)",color:"#fff",border:"none",borderRadius:14,padding:"13px 0",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+        ✏️ {log?(lang==="zh"?"修改日记":lang==="th"?"แก้ไขบันทึก":"Edit Diary"):(lang==="zh"?"写日记":lang==="th"?"เขียนบันทึก":"Write Diary")}
+      </button>
+    </div>
+  );
+
+  // EDIT mode
+  const EditMode = () => (
+    <div>
+      <button onClick={()=>setEditing(false)} style={{background:"none",border:"none",color:"#aaa",fontSize:13,cursor:"pointer",marginBottom:12,padding:0}}>← {lang==="zh"?"返回":lang==="th"?"กลับ":"Back"}</button>
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:10,color:"#bbb",fontWeight:700,letterSpacing:0.8,marginBottom:7,textTransform:"uppercase"}}>{t.mood}</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{MOODS.map(m=><button key={m} onClick={()=>setMood(m)} style={{fontSize:22,background:mood===m?"#FDE8EE":"#f7f7f7",border:mood===m?"2px solid #D63864":"2px solid transparent",borderRadius:10,padding:"3px 6px",cursor:"pointer"}}>{m}</button>)}</div>
+      </div>
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:10,color:"#bbb",fontWeight:700,letterSpacing:0.8,marginBottom:7,textTransform:"uppercase"}}>{t.symptoms}</div>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{SYMPTOMS[lang].map(sy=><button key={sy} onClick={()=>setSyms(p=>p.includes(sy)?p.filter(x=>x!==sy):[...p,sy])} style={{padding:"4px 10px",borderRadius:20,fontSize:11,background:syms.includes(sy)?"#D63864":"#f5f5f5",color:syms.includes(sy)?"#fff":"#666",border:"none",cursor:"pointer",transition:"all 0.12s"}}>{sy}</button>)}</div>
+      </div>
+      <div style={{marginBottom:18}}>
+        <div style={{fontSize:10,color:"#bbb",fontWeight:700,letterSpacing:0.8,marginBottom:7,textTransform:"uppercase"}}>{t.note}</div>
+        <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={t.notePlaceholder} style={{width:"100%",border:"1.5px solid #eee",borderRadius:12,padding:"10px 12px",fontSize:13,resize:"none",height:64,boxSizing:"border-box",outline:"none",fontFamily:"inherit"}}/>
+      </div>
+      <button onClick={()=>onSave({mood,symptoms:syms,note})} style={{width:"100%",background:"linear-gradient(135deg,#D63864,#F07090)",color:"#fff",border:"none",borderRadius:14,padding:"13px 0",fontSize:14,fontWeight:700,cursor:"pointer"}}>{t.savelog}</button>
+    </div>
+  );
+
   return (
     <div style={{position:"fixed",inset:0,background:"#00000077",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"28px 28px 0 0",padding:"22px 18px 40px",width:"100%",maxWidth:480,boxShadow:"0 -8px 40px #0003",maxHeight:"88vh",overflowY:"auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div><div style={{fontWeight:800,fontSize:15}}>{dateStr}</div>{sl&&<Badge label={sl} bg={s.bg||"#f5f5f5"} fg={s.fg||"#aaa"}/>}</div>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"28px 28px 0 0",padding:"22px 18px 40px",width:"100%",maxWidth:480,boxShadow:"0 -8px 40px #0003",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div><div style={{fontWeight:800,fontSize:15}}>{dateStr}</div></div>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#ddd"}}>✕</button>
         </div>
-        <div style={{display:"flex",gap:8,marginBottom:16}}>
-          <button onClick={onTogglePeriodStart} style={{flex:1,padding:"9px 0",borderRadius:12,fontSize:11,fontWeight:600,cursor:"pointer",border:"none",background:isStart?"#D63864":"#FDE8EE",color:isStart?"#fff":"#D63864"}}>
-            🩸 {isStart?`✓ ${t.markPeriodStart}`:t.markPeriodStart}
-          </button>
-          <button onClick={onTogglePeriodEnd} style={{flex:1,padding:"9px 0",borderRadius:12,fontSize:11,fontWeight:600,cursor:"pointer",border:"none",background:isEnd?"#5B8AF0":"#EEF2FF",color:isEnd?"#fff":"#5B8AF0"}}>
-            ✓ {isEnd?`✓ ${t.markPeriodEnd}`:t.markPeriodEnd}
-          </button>
-        </div>
-        <div style={{marginBottom:14}}>
-          <div style={{fontSize:10,color:"#bbb",fontWeight:700,letterSpacing:0.8,marginBottom:7,textTransform:"uppercase"}}>{t.mood}</div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{MOODS.map(m=><button key={m} onClick={()=>setMood(m)} style={{fontSize:22,background:mood===m?"#FDE8EE":"#f7f7f7",border:mood===m?"2px solid #D63864":"2px solid transparent",borderRadius:10,padding:"3px 6px",cursor:"pointer"}}>{m}</button>)}</div>
-        </div>
-        <div style={{marginBottom:14}}>
-          <div style={{fontSize:10,color:"#bbb",fontWeight:700,letterSpacing:0.8,marginBottom:7,textTransform:"uppercase"}}>{t.symptoms}</div>
-          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{SYMPTOMS[lang].map(s=><button key={s} onClick={()=>setSyms(p=>p.includes(s)?p.filter(x=>x!==s):[...p,s])} style={{padding:"4px 10px",borderRadius:20,fontSize:11,background:syms.includes(s)?"#D63864":"#f5f5f5",color:syms.includes(s)?"#fff":"#666",border:"none",cursor:"pointer",transition:"all 0.12s"}}>{s}</button>)}</div>
-        </div>
-        <div style={{marginBottom:18}}>
-          <div style={{fontSize:10,color:"#bbb",fontWeight:700,letterSpacing:0.8,marginBottom:7,textTransform:"uppercase"}}>{t.note}</div>
-          <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={t.notePlaceholder} style={{width:"100%",border:"1.5px solid #eee",borderRadius:12,padding:"10px 12px",fontSize:13,resize:"none",height:64,boxSizing:"border-box",outline:"none",fontFamily:"inherit"}}/>
-        </div>
-        <button onClick={()=>onSave({mood,symptoms:syms,note})} style={{width:"100%",background:"linear-gradient(135deg,#D63864,#F07090)",color:"#fff",border:"none",borderRadius:14,padding:"13px 0",fontSize:14,fontWeight:700,cursor:"pointer"}}>{t.savelog}</button>
+        {editing ? <EditMode/> : <ViewMode/>}
       </div>
     </div>
   );
 }
 
-// ─── INTIMATE MODAL ───────────────────────────────────────────────────────────
-function IntimateModal({allCycles,avgLength,avgPeriod,intimateLogs,t,lang,onSave,onClose}) {
-  const [date,setDate]=useState(todayStr());
-  const [hour,setHour]=useState(22);
-  const [min,setMin]=useState(0);
-  const [ci,setCi]=useState(1);
-  const [note,setNote]=useState("");
+// ─── INTIMATE MODAL — supports create + edit ─────────────────────────────────
+function IntimateModal({allCycles,avgLength,avgPeriod,intimateLogs,t,lang,onSave,onClose,editRecord}) {
+  const existing = editRecord;
+  const initH = existing ? parseInt(existing.time?.split(":")?.[0]||"22") : 22;
+  const initM = existing ? parseInt(existing.time?.split(":")?.[1]||"0") : 0;
+  const [date,setDate]=useState(existing?.date||todayStr());
+  const [hour,setHour]=useState(initH);
+  const [min,setMin]=useState(initM);
+  const [ci,setCi]=useState(existing?.contraIndex??1);
+  const [note,setNote]=useState(existing?.note||"");
   const {status}=getCycleStatus(date,allCycles,avgLength,avgPeriod);
   const s=SC[status]||{};
   const sl=statusLabel(status,t);
-  const lastCi=(intimateLogs||[]).length>0?intimateLogs[0].contraIndex:null;
-  const nth=(intimateLogs||[]).filter(x=>x.date===date).length+1;
+  const lastCi=(intimateLogs||[]).filter(x=>!existing||x.id!==existing.id).slice(0,1)[0]?.contraIndex??null;
+  const nth=existing?.nth||(intimateLogs||[]).filter(x=>x.date===date).length+1;
   const lastLabel=lang==="zh"?"上次":lang==="th"?"ครั้งก่อน":"Last";
+  const isEditing=!!existing;
+  const handleSave = () => {
+    const rec = {date,time:`${pad2(hour)}:${pad2(min)}`,contraIndex:ci,note,nth,id:existing?.id||Date.now()};
+    onSave(rec, isEditing);
+  };
   return (
     <div style={{position:"fixed",inset:0,background:"#00000077",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"28px 28px 0 0",padding:"22px 18px 40px",width:"100%",maxWidth:480,boxShadow:"0 -8px 40px #0003",maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
-          <div style={{fontWeight:800,fontSize:16}}>♥ {t.nth}{nth} {t.intimate_log}</div>
+          <div style={{fontWeight:800,fontSize:16}}>{isEditing?(lang==="zh"?"✏️ 编辑亲密记录":lang==="th"?"✏️ แก้ไขบันทึก":"✏️ Edit Record"):`♥ ${t.nth}${nth} ${t.intimate_log}`}</div>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#ddd"}}>✕</button>
         </div>
         <div style={{marginBottom:14}}>
-          <div style={{fontSize:10,color:"#bbb",fontWeight:700,letterSpacing:0.8,marginBottom:7,textTransform:"uppercase"}}>Date</div>
+          <div style={{fontSize:10,color:"#bbb",fontWeight:700,letterSpacing:0.8,marginBottom:7,textTransform:"uppercase"}}>{lang==="zh"?"日期":lang==="th"?"วันที่":"Date"}</div>
           <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:"100%",border:"1.5px solid #eee",borderRadius:12,padding:"10px 12px",fontSize:13,boxSizing:"border-box",outline:"none",fontFamily:"inherit"}}/>
           {sl&&<div style={{marginTop:6}}><Badge label={sl} bg={s.bg||"#f5f5f5"} fg={s.fg||"#aaa"}/></div>}
         </div>
@@ -511,7 +583,7 @@ function IntimateModal({allCycles,avgLength,avgPeriod,intimateLogs,t,lang,onSave
           <div style={{fontSize:10,color:"#bbb",fontWeight:700,letterSpacing:0.8,marginBottom:7,textTransform:"uppercase"}}>{t.intimateNote}</div>
           <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="…" style={{width:"100%",border:"1.5px solid #eee",borderRadius:12,padding:"10px 12px",fontSize:13,resize:"none",height:56,boxSizing:"border-box",outline:"none",fontFamily:"inherit"}}/>
         </div>
-        <button onClick={()=>onSave({date,time:`${pad2(hour)}:${pad2(min)}`,contraIndex:ci,note,nth,id:Date.now()})} style={{width:"100%",background:"linear-gradient(135deg,#F585A5,#D63864)",color:"#fff",border:"none",borderRadius:14,padding:"13px 0",fontSize:14,fontWeight:700,cursor:"pointer"}}>{t.savelog}</button>
+        <button onClick={handleSave} style={{width:"100%",background:"linear-gradient(135deg,#F585A5,#D63864)",color:"#fff",border:"none",borderRadius:14,padding:"13px 0",fontSize:14,fontWeight:700,cursor:"pointer"}}>{t.savelog}</button>
       </div>
     </div>
   );
@@ -674,6 +746,7 @@ export default function App() {
   const [selDay, setSelDay] = useState(null);
   const [showLog, setShowLog] = useState(false);
   const [showIntimate, setShowIntimate] = useState(false);
+  const [editIntimateRecord, setEditIntimateRecord] = useState(null);
   const [showEditCycles, setShowEditCycles] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
   const [tab, setTab] = useState("calendar");
@@ -777,9 +850,21 @@ export default function App() {
     save({actualPeriods:newP}, "periodEnd", d);
   };
 
-  const saveIntimate = rec => {
-    save({intimateLogs:[...(intimateLogs||[]),rec].sort((a,b)=>a.date>b.date?-1:1)}, "intimate", rec.date);
+  const saveIntimate = (rec, isEdit) => {
+    let updated;
+    if (isEdit) {
+      updated = (intimateLogs||[]).map(x => x.id===rec.id ? rec : x).sort((a,b)=>a.date>b.date?-1:1);
+    } else {
+      updated = [...(intimateLogs||[]), rec].sort((a,b)=>a.date>b.date?-1:1);
+    }
+    save({intimateLogs:updated}, "intimate", rec.date);
     setShowIntimate(false);
+    setEditIntimateRecord(null);
+  };
+
+  const deleteIntimate = (id) => {
+    const updated = (intimateLogs||[]).filter(x => x.id !== id);
+    save({intimateLogs:updated});
   };
 
   const sendMsg = () => {
@@ -897,8 +982,28 @@ export default function App() {
         {/* CALENDAR */}
         {tab==="calendar"&&(
           <div>
-            <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>
-              {[{bg:SC.period.bg,fg:SC.period.fg,label:t.periodDay},{bg:SC.fertMid.bg,fg:SC.fertMid.fg,label:t.fertileDay},{bg:SC.fertHigh.bg,fg:SC.fertHigh.fg,label:"Peak"},{bg:SC.ovulation.bg,fg:SC.ovulation.fg,label:t.ovulationDay},{bg:SC.postOv.bg,fg:SC.postOv.fg,label:t.postOvDay},{bg:SC.predicted.bg,fg:SC.predicted.fg,label:t.predictedPeriod}].map(p=><Badge key={p.label} label={p.label} bg={p.bg} fg={p.fg}/>)}
+            {/* Legend — 2 rows, cleaner */}
+            <div style={{background:"#fff",borderRadius:14,padding:"10px 12px",marginBottom:10,boxShadow:"0 1px 8px #0001"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px 12px"}}>
+                {[
+                  {bg:SC.period.bg,fg:SC.period.fg,label:t.periodDay,prob:"~1%"},
+                  {bg:SC.ovulation.bg,fg:SC.ovulation.fg,label:t.ovulationDay,prob:"~30%"},
+                  {bg:SC.fertHigh.bg,fg:SC.fertHigh.fg,label:lang==="zh"?"易孕高峰":lang==="th"?"สูงสุด":"Peak Fertile",prob:"~25%"},
+                  {bg:SC.fertMid.bg,fg:SC.fertMid.fg,label:t.fertileDay,prob:"~10%"},
+                  {bg:SC.postOv.bg,fg:SC.postOv.fg,label:t.postOvDay,prob:"~8%"},
+                  {bg:SC.predicted.bg,fg:SC.predicted.fg,label:t.predictedPeriod,prob:""},
+                ].map(p=>(
+                  <div key={p.label} style={{display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{width:10,height:10,borderRadius:3,background:p.bg,border:`1.5px solid ${p.fg}44`,flexShrink:0}}/>
+                    <span style={{fontSize:11,color:"#555",fontWeight:500}}>{p.label}</span>
+                    {p.prob&&<span style={{fontSize:10,color:p.fg,fontWeight:700,marginLeft:"auto"}}>{p.prob}</span>}
+                  </div>
+                ))}
+              </div>
+              <div style={{marginTop:8,paddingTop:6,borderTop:"1px solid #f0f0f0",display:"flex",gap:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:10,color:"#F585A5"}}>♥</span><span style={{fontSize:10,color:"#aaa"}}>{lang==="zh"?"亲密记录":lang==="th"?"ความใกล้ชิด":"Intimate"}</span></div>
+                <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:10,color:"#bbb"}}>●</span><span style={{fontSize:10,color:"#aaa"}}>{lang==="zh"?"日记":lang==="th"?"บันทึก":"Diary"}</span></div>
+              </div>
             </div>
             <div style={{background:"#fff",borderRadius:20,padding:14,boxShadow:"0 2px 12px #0001"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -992,16 +1097,27 @@ export default function App() {
                 const rsc=SC[rs]||{};
                 const rsl=statusLabel(rs,t);
                 return (
-                  <div key={rec.id||i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:"1px solid #f9f9f9"}}>
-                    <div style={{width:34,height:34,borderRadius:10,background:"#FDE8EE",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{CONTRA_ICONS[rec.contraIndex]||"♥"}</div>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:12,fontWeight:600}}>{rec.date} <span style={{color:"#bbb",fontWeight:400}}>{rec.time}</span> <span style={{fontSize:10,color:"#F585A5"}}>#{rec.nth}</span></div>
-                      <div style={{fontSize:10,color:"#aaa"}}>{t.contraOptions[rec.contraIndex]}</div>
-                      {rec.note&&<div style={{fontSize:10,color:"#888"}}>{rec.note}</div>}
+                  <div key={rec.id||i} style={{padding:"10px 0",borderBottom:"1px solid #f9f9f9"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:34,height:34,borderRadius:10,background:"#FDE8EE",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{CONTRA_ICONS[rec.contraIndex]||"♥"}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:12,fontWeight:600}}>{rec.date} <span style={{color:"#bbb",fontWeight:400}}>{rec.time}</span> <span style={{fontSize:10,color:"#F585A5"}}>#{rec.nth}</span></div>
+                        <div style={{fontSize:10,color:"#aaa"}}>{t.contraOptions[rec.contraIndex]}</div>
+                        {rec.note&&<div style={{fontSize:10,color:"#888"}}>{rec.note}</div>}
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-end"}}>
+                        {rsl&&<Badge label={rsl} bg={rsc.bg||"#f5f5f5"} fg={rsc.fg||"#aaa"}/>}
+                        {p.prob>0&&<Badge label={`~${p.prob}%`} bg={rc.bg} fg={rc.fg}/>}
+                      </div>
                     </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-end"}}>
-                      {rsl&&<Badge label={rsl} bg={rsc.bg||"#f5f5f5"} fg={rsc.fg||"#aaa"}/>}
-                      {p.prob>0&&<Badge label={`~${p.prob}%`} bg={rc.bg} fg={rc.fg}/>}
+                    {/* Edit / Delete buttons */}
+                    <div style={{display:"flex",gap:8,marginTop:8}}>
+                      <button onClick={()=>{setEditIntimateRecord(rec);setShowIntimate(true);}} style={{flex:1,background:"#F0F4FF",color:"#5B8AF0",border:"none",borderRadius:10,padding:"6px 0",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                        ✏️ {lang==="zh"?"编辑":lang==="th"?"แก้ไข":"Edit"}
+                      </button>
+                      <button onClick={()=>{if(window.confirm(lang==="zh"?"确定删除这条记录？":lang==="th"?"ยืนยันการลบ?":"Delete this record?")) deleteIntimate(rec.id);}} style={{flex:1,background:"#FDE8EE",color:"#D63864",border:"none",borderRadius:10,padding:"6px 0",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                        🗑 {lang==="zh"?"删除":lang==="th"?"ลบ":"Delete"}
+                      </button>
                     </div>
                   </div>
                 );
@@ -1044,8 +1160,8 @@ export default function App() {
         )}
       </div>
 
-      {showLog&&<LogModal dateStr={selDay} log={(fahLogs||{})[selDay]} allCycles={allCycles} avgLength={avgLength} avgPeriod={avgPeriod} t={t} lang={lang} actualPeriods={actualPeriods||[]} onSave={saveLog} onTogglePeriodStart={togglePeriodStart} onTogglePeriodEnd={togglePeriodEnd} onClose={()=>setShowLog(false)}/>}
-      {showIntimate&&<IntimateModal allCycles={allCycles} avgLength={avgLength} avgPeriod={avgPeriod} intimateLogs={intimateLogs||[]} t={t} lang={lang} onSave={saveIntimate} onClose={()=>setShowIntimate(false)}/>}
+      {showLog&&<LogModal dateStr={selDay} log={(fahLogs||{})[selDay]} allCycles={allCycles} avgLength={avgLength} avgPeriod={avgPeriod} t={t} lang={lang} actualPeriods={actualPeriods||[]} intimateLogs={intimateLogs||[]} onSave={saveLog} onTogglePeriodStart={togglePeriodStart} onTogglePeriodEnd={togglePeriodEnd} onClose={()=>setShowLog(false)}/>}
+      {showIntimate&&<IntimateModal allCycles={allCycles} avgLength={avgLength} avgPeriod={avgPeriod} intimateLogs={intimateLogs||[]} t={t} lang={lang} onSave={saveIntimate} editRecord={editIntimateRecord} onClose={()=>{setShowIntimate(false);setEditIntimateRecord(null);}}/>}
       {showEditCycles&&<EditCyclesModal actualPeriods={actualPeriods||[]} t={t} onSave={newP=>save({actualPeriods:newP},"editCycles")} onClose={()=>setShowEditCycles(false)}/>}
       {showNotifs&&<NotifPanel notifications={notifications||[]} myRole={activeUser} lang={lang} t={t} onMarkAllRead={markAllRead} onClose={()=>setShowNotifs(false)}/>}
     </div>
