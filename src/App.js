@@ -1,14 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db } from "./firebase";
 import { doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
 
 const COUPLE_ID = "lei-fah-2026";
+const LOCAL_USER_KEY = "yoozoo_my_role";
+const LOCAL_SEEN_KEY = "yoozoo_last_seen";
 
+// ─── i18n ─────────────────────────────────────────────────────────────────────
 const T = {
   en: {
     appName:"Yoozoo", tagline:"Our Little Secret 🌺",
     calendar:"Calendar", stats:"Stats", intimate:"Intimate", messages:"Messages",
-    nextPeriod:"Next Period", daysLater:"days", today:"Today",
+    nextPeriod:"Next Period", daysLater:"days", today:"Today", tomorrow:"Tomorrow",
     modeConceive:"Trying", modeAvoid:"Avoid",
     periodDay:"Period", fertileDay:"Fertile", ovulationDay:"Ovulation", postOvDay:"Post-Ov",
     predictedPeriod:"Predicted", safeDay:"Safe",
@@ -20,15 +23,25 @@ const T = {
     avgCycle:"Avg Cycle", avgPeriod:"Avg Period", totalCycles:"Cycles",
     send:"Send", msgPlaceholderLei:"Message to Fah…", msgPlaceholderFah:"Message to Lei…",
     aiDaily:"Today's Message", refreshAI:"Get Today's Message ✨",
-    markPeriodStart:"✦ Mark Period Start", markPeriodEnd:"✓ Mark Period End",
+    markPeriodStart:"Period Start", markPeriodEnd:"Period End",
     corrected:"Cycle updated from actual data",
     cycleDay:"Day", nth:"#", syncing:"Syncing…", synced:"Synced ✓",
     contraOptions:["No protection","Condom","Withdrawal","No ejaculation","Morning-after","Daily pill","Long-term pill","IUD","Other","Solo"],
+    chooseRole:"Who are you?", iAmLei:"I'm Lei 🫶", iAmFah:"I'm Fah 🌺",
+    chooseRoleDesc:"This stays on your phone only",
+    editCycles:"Edit Records", addPeriod:"+ Add Period",
+    periodStart:"Start", periodEnd:"End", deletePeriod:"Delete",
+    editCyclesTitle:"Period Records",
+    translate:"Translate", translating:"Translating…", translated:"Translated",
+    notifNew:"New", notifMsg:"sent a message", notifIntimate:"logged an intimate moment",
+    notifPeriodStart:"marked period start", notifPeriodEnd:"marked period end",
+    notifEditCycles:"updated period records", notifAI:"sent today's message",
+    notifications:"Notifications", markAllRead:"Mark all read", noNotifs:"No new notifications",
   },
   zh: {
     appName:"柚子", tagline:"我们的小秘密 🌺",
     calendar:"日历", stats:"统计", intimate:"亲密", messages:"留言",
-    nextPeriod:"下次经期", daysLater:"天", today:"今天",
+    nextPeriod:"下次经期", daysLater:"天", today:"今天", tomorrow:"明天",
     modeConceive:"备孕", modeAvoid:"避孕",
     periodDay:"经期", fertileDay:"易孕", ovulationDay:"排卵日", postOvDay:"排卵后",
     predictedPeriod:"预测", safeDay:"安全",
@@ -40,15 +53,25 @@ const T = {
     avgCycle:"平均周期", avgPeriod:"平均经期", totalCycles:"周期数",
     send:"发送", msgPlaceholderLei:"给 Fah 留言…", msgPlaceholderFah:"给 Lei 留言…",
     aiDaily:"今日消息", refreshAI:"获取今日消息 ✨",
-    markPeriodStart:"✦ 标记经期开始", markPeriodEnd:"✓ 标记经期结束",
+    markPeriodStart:"经期开始", markPeriodEnd:"经期结束",
     corrected:"已根据实际数据更新周期",
     cycleDay:"第", nth:"第", syncing:"同步中…", synced:"已同步 ✓",
     contraOptions:["无措施","避孕套","体外排精","未射精","紧急避孕药","短效避孕药","长效避孕药","节育环","其他措施","自慰"],
+    chooseRole:"你是谁？", iAmLei:"我是 Lei 🫶", iAmFah:"我是 Fah 🌺",
+    chooseRoleDesc:"这个选择只保存在你的手机上",
+    editCycles:"编辑记录", addPeriod:"+ 添加经期",
+    periodStart:"开始日", periodEnd:"结束日", deletePeriod:"删除",
+    editCyclesTitle:"经期记录",
+    translate:"翻译", translating:"翻译中…", translated:"已翻译",
+    notifNew:"新", notifMsg:"发了一条留言", notifIntimate:"记录了亲密",
+    notifPeriodStart:"标记了经期开始", notifPeriodEnd:"标记了经期结束",
+    notifEditCycles:"更新了经期记录", notifAI:"发送了今日消息",
+    notifications:"通知", markAllRead:"全部已读", noNotifs:"暂无新通知",
   },
   th: {
     appName:"ยูซู", tagline:"ความลับของเรา 🌺",
     calendar:"ปฏิทิน", stats:"สถิติ", intimate:"ความใกล้ชิด", messages:"ข้อความ",
-    nextPeriod:"ประจำเดือนครั้งถัดไป", daysLater:"วัน", today:"วันนี้",
+    nextPeriod:"ประจำเดือนครั้งถัดไป", daysLater:"วัน", today:"วันนี้", tomorrow:"พรุ่งนี้",
     modeConceive:"ตั้งครรภ์", modeAvoid:"คุมกำเนิด",
     periodDay:"ประจำเดือน", fertileDay:"วันเจริญพันธุ์", ovulationDay:"วันตกไข่", postOvDay:"หลังตกไข่",
     predictedPeriod:"คาดการณ์", safeDay:"ปลอดภัย",
@@ -60,10 +83,20 @@ const T = {
     avgCycle:"รอบเฉลี่ย", avgPeriod:"ประจำเดือนเฉลี่ย", totalCycles:"รอบ",
     send:"ส่ง", msgPlaceholderLei:"ข้อความถึง Fah…", msgPlaceholderFah:"ข้อความถึง Lei…",
     aiDaily:"ข้อความวันนี้", refreshAI:"รับข้อความวันนี้ ✨",
-    markPeriodStart:"✦ บันทึกวันเริ่มประจำเดือน", markPeriodEnd:"✓ บันทึกวันสิ้นสุด",
+    markPeriodStart:"เริ่มประจำเดือน", markPeriodEnd:"สิ้นสุดประจำเดือน",
     corrected:"อัปเดตรอบตามข้อมูลจริง",
     cycleDay:"วันที่", nth:"ครั้งที่", syncing:"กำลังซิงค์…", synced:"ซิงค์แล้ว ✓",
     contraOptions:["ไม่ได้คุมกำเนิด","ถุงยาง","ถอนออก","ไม่หลั่ง","ยาคุมฉุกเฉิน","ยาคุมรายวัน","ยาคุมระยะยาว","ห่วงอนามัย","อื่นๆ","ช่วยตัวเอง"],
+    chooseRole:"คุณเป็นใคร?", iAmLei:"ฉันคือ Lei 🫶", iAmFah:"ฉันคือ Fah 🌺",
+    chooseRoleDesc:"การเลือกนี้จะเก็บไว้ในโทรศัพท์ของคุณเท่านั้น",
+    editCycles:"แก้ไขบันทึก", addPeriod:"+ เพิ่มประจำเดือน",
+    periodStart:"วันเริ่ม", periodEnd:"วันสิ้นสุด", deletePeriod:"ลบ",
+    editCyclesTitle:"บันทึกประจำเดือน",
+    translate:"แปล", translating:"กำลังแปล…", translated:"แปลแล้ว",
+    notifNew:"ใหม่", notifMsg:"ส่งข้อความ", notifIntimate:"บันทึกความใกล้ชิด",
+    notifPeriodStart:"บันทึกวันเริ่มประจำเดือน", notifPeriodEnd:"บันทึกวันสิ้นสุดประจำเดือน",
+    notifEditCycles:"อัปเดตบันทึกประจำเดือน", notifAI:"ส่งข้อความวันนี้",
+    notifications:"การแจ้งเตือน", markAllRead:"อ่านทั้งหมด", noNotifs:"ไม่มีการแจ้งเตือนใหม่",
   },
 };
 
@@ -75,6 +108,7 @@ const SYMPTOMS = {
 const MOODS = ["😄","😊","😐","😔","😴","😤","🥰","🤢","😰","🤩"];
 const CONTRA_ICONS = ["🔓","🛡️","💧","🚫","💊","💊","💉","🔩","🌂","🤲"];
 
+// ─── ALGORITHM ────────────────────────────────────────────────────────────────
 function computeAdaptiveCycle(actualPeriods) {
   if (!actualPeriods || actualPeriods.length < 1) return { avgLength:28, avgPeriod:5 };
   const lengths = [];
@@ -156,6 +190,7 @@ function calcPregnancyProb(dateStr, allCycles, avgLength, avgPeriod, intimateLog
   return { prob, label, status };
 }
 
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
 const todayStr = () => new Date().toISOString().slice(0,10);
 const pad2 = n => String(n).padStart(2,"0");
 const fmtDate = (y,m,d) => `${y}-${pad2(m+1)}-${pad2(d)}`;
@@ -166,6 +201,7 @@ const daysInMonth = (y,m) => new Date(y,m+1,0).getDate();
 const firstDow = (y,m) => new Date(y,m,1).getDay();
 const pick = arr => arr[new Date().getDate() % arr.length];
 
+// ─── STYLE CONSTANTS ──────────────────────────────────────────────────────────
 const SC = {
   period:           { bg:"#FDE8EE", fg:"#D63864", dot:"#D63864" },
   predicted:        { bg:"#FEF0F4", fg:"#E8547A", dot:"#E8547A88" },
@@ -189,7 +225,7 @@ const PHASE_LABEL_MAP = { ovulation:"high","pred-ovulation":"high",fertHigh:"hig
 const PHASE_PROB_MAP  = { ovulation:"~30%","pred-ovulation":"~30%",fertHigh:"~25%","pred-fertHigh":"~25%",fertMid:"~10%","pred-fertMid":"~10%",postOv:"~8%","pred-postOv":"~8%",period:"~1%",predicted:"~1%",safe:"~2%" };
 
 const DEFAULT_STATE = {
-  lang:"en", mode:"avoid", activeUser:"lei",
+  lang:"en", mode:"avoid",
   actualPeriods:[
     { start:"2026-02-08", end:"2026-02-12", actual:true },
     { start:"2026-03-08", end:"2026-03-13", actual:true },
@@ -201,22 +237,148 @@ const DEFAULT_STATE = {
     { id:2, date:"2026-04-15", time:"23:00", contraIndex:0, note:"", nth:1 },
   ],
   messages:[
-    { from:"fah", text:"ไม่สบายนิดหน่อย แต่โอเค 🌸", date:"2026-04-05", isAI:false },
-    { from:"lei", text:"Rest well baby 💕", date:"2026-04-05", isAI:false },
+    { from:"fah", text:"ไม่สบายนิดหน่อย แต่โอเค 🌸", date:"2026-04-05", isAI:false, id:"m1" },
+    { from:"lei", text:"Rest well baby 💕", date:"2026-04-05", isAI:false, id:"m2" },
   ],
+  // notifications: [{id, from, type, text, date, readBy:[]}]
+  notifications:[],
 };
 
+// ─── TRANSLATE via Claude API ─────────────────────────────────────────────────
+async function translateText(text, targetLang) {
+  const langName = { zh:"Simplified Chinese", en:"English", th:"Thai" }[targetLang] || "English";
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        model:"claude-sonnet-4-20250514", max_tokens:1000,
+        messages:[{ role:"user", content:`Translate the following text to ${langName}. Return only the translated text, nothing else:\n\n${text}` }],
+      }),
+    });
+    const d = await res.json();
+    return d.content?.[0]?.text || text;
+  } catch { return text; }
+}
+
+// ─── SMALL COMPONENTS ─────────────────────────────────────────────────────────
 const Badge = ({label,bg,fg}) => <span style={{background:bg,color:fg,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,display:"inline-block"}}>{label}</span>;
+
 const LangPill = ({lang,cur,set}) => {
   const labels={zh:"中",en:"EN",th:"ไทย"};
   return <button onClick={()=>set(lang)} style={{padding:"3px 9px",borderRadius:10,border:"none",background:cur===lang?"#fff":"transparent",color:cur===lang?"#D63864":"#ffffff88",fontWeight:cur===lang?700:400,fontSize:11,cursor:"pointer"}}>{labels[lang]}</button>;
 };
 
 function statusLabel(status, t) {
-  const map = { period:t.periodDay, predicted:t.predictedPeriod, ovulation:t.ovulationDay, "pred-ovulation":t.ovulationDay, fertHigh:t.fertileDay, fertMid:t.fertileDay, "pred-fertHigh":t.fertileDay, "pred-fertMid":t.fertileDay, postOv:t.postOvDay, "pred-postOv":t.postOvDay, safe:t.safeDay };
-  return map[status] || null;
+  const map={period:t.periodDay,predicted:t.predictedPeriod,ovulation:t.ovulationDay,"pred-ovulation":t.ovulationDay,fertHigh:t.fertileDay,fertMid:t.fertileDay,"pred-fertHigh":t.fertileDay,"pred-fertMid":t.fertileDay,postOv:t.postOvDay,"pred-postOv":t.postOvDay,safe:t.safeDay};
+  return map[status]||null;
 }
 
+// ─── ROLE SELECT ──────────────────────────────────────────────────────────────
+function RoleSelect({ onSelect }) {
+  const [lang, setLang] = useState("en");
+  const t = T[lang];
+  return (
+    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#B52050,#D63864,#F07090)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",padding:24}}>
+      <div style={{fontSize:56,marginBottom:16}}>🌺</div>
+      <div style={{color:"#fff",fontWeight:900,fontSize:28,marginBottom:6}}>{t.appName}</div>
+      <div style={{color:"#fffc",fontSize:14,marginBottom:32}}>{t.tagline}</div>
+      <div style={{display:"flex",gap:8,marginBottom:32,background:"#ffffff22",borderRadius:14,padding:4}}>
+        {["zh","en","th"].map(l=>(
+          <button key={l} onClick={()=>setLang(l)} style={{padding:"6px 16px",borderRadius:10,border:"none",background:lang===l?"#fff":"transparent",color:lang===l?"#D63864":"#ffffff99",fontWeight:lang===l?700:400,fontSize:13,cursor:"pointer"}}>
+            {{zh:"中文",en:"English",th:"ไทย"}[l]}
+          </button>
+        ))}
+      </div>
+      <div style={{background:"#fff",borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:360,boxShadow:"0 16px 48px #0003"}}>
+        <div style={{fontWeight:800,fontSize:18,color:"#333",textAlign:"center",marginBottom:6}}>{t.chooseRole}</div>
+        <div style={{fontSize:12,color:"#bbb",textAlign:"center",marginBottom:24}}>{t.chooseRoleDesc}</div>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <button onClick={()=>onSelect("lei",lang)} style={{padding:"16px",borderRadius:16,border:"2.5px solid #5B8AF0",background:"#F0F4FF",fontSize:16,fontWeight:700,color:"#5B8AF0",cursor:"pointer"}}>
+            {t.iAmLei}
+          </button>
+          <button onClick={()=>onSelect("fah",lang)} style={{padding:"16px",borderRadius:16,border:"2.5px solid #D63864",background:"#FDE8EE",fontSize:16,fontWeight:700,color:"#D63864",cursor:"pointer"}}>
+            {t.iAmFah}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── EDIT CYCLES MODAL ────────────────────────────────────────────────────────
+function EditCyclesModal({ actualPeriods, t, onSave, onClose }) {
+  const [periods, setPeriods] = useState((actualPeriods||[]).map((p,i)=>({...p,_id:i})));
+  const updateField = (id,field,val) => setPeriods(p=>p.map(x=>x._id===id?{...x,[field]:val}:x));
+  const deletePeriod = id => setPeriods(p=>p.filter(x=>x._id!==id));
+  const addPeriod = () => { const mx=periods.reduce((m,x)=>Math.max(m,x._id),0); setPeriods(p=>[...p,{start:todayStr(),end:null,actual:true,_id:mx+1}]); };
+  const handleSave = () => {
+    const cleaned=periods.filter(p=>p.start).map(({_id,...rest})=>({...rest,actual:true})).sort((a,b)=>a.start>b.start?1:-1);
+    onSave(cleaned); onClose();
+  };
+  return (
+    <div style={{position:"fixed",inset:0,background:"#00000077",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"28px 28px 0 0",padding:"22px 18px 40px",width:"100%",maxWidth:480,boxShadow:"0 -8px 40px #0003",maxHeight:"88vh",overflowY:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <div style={{fontWeight:800,fontSize:16}}>🩸 {t.editCyclesTitle}</div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#ddd"}}>✕</button>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+          {periods.map(p=>(
+            <div key={p._id} style={{background:"#FFF5F8",borderRadius:14,padding:"12px 14px",border:"1.5px solid #F5C0D0"}}>
+              <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:10,color:"#D63864",fontWeight:700,marginBottom:4}}>{t.periodStart}</div>
+                  <input type="date" value={p.start||""} onChange={e=>updateField(p._id,"start",e.target.value)} style={{width:"100%",border:"1.5px solid #F5C0D0",borderRadius:10,padding:"7px 10px",fontSize:13,boxSizing:"border-box",outline:"none",background:"#fff"}}/>
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:10,color:"#5B8AF0",fontWeight:700,marginBottom:4}}>{t.periodEnd}</div>
+                  <input type="date" value={p.end||""} onChange={e=>updateField(p._id,"end",e.target.value||null)} style={{width:"100%",border:"1.5px solid #C0CBFA",borderRadius:10,padding:"7px 10px",fontSize:13,boxSizing:"border-box",outline:"none",background:"#fff"}}/>
+                </div>
+                <button onClick={()=>deletePeriod(p._id)} style={{background:"none",border:"none",fontSize:18,color:"#ccc",cursor:"pointer",padding:"0 4px",flexShrink:0}}>🗑</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <button onClick={addPeriod} style={{width:"100%",background:"#FDE8EE",color:"#D63864",border:"1.5px dashed #F5C0D0",borderRadius:12,padding:"10px 0",fontSize:13,fontWeight:600,cursor:"pointer",marginBottom:14}}>{t.addPeriod}</button>
+        <button onClick={handleSave} style={{width:"100%",background:"linear-gradient(135deg,#D63864,#F07090)",color:"#fff",border:"none",borderRadius:14,padding:"13px 0",fontSize:14,fontWeight:700,cursor:"pointer"}}>{t.savelog}</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── NOTIFICATIONS PANEL ──────────────────────────────────────────────────────
+function NotifPanel({ notifications, myRole, lang, t, onMarkAllRead, onClose }) {
+  const myNotifs = (notifications||[])
+    .filter(n => n.for === myRole)
+    .sort((a,b) => a.date < b.date ? 1 : -1);
+  const unread = myNotifs.filter(n => !n.read);
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"#00000055",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"28px 28px 0 0",padding:"22px 18px 40px",width:"100%",maxWidth:480,boxShadow:"0 -8px 40px #0003",maxHeight:"75vh",overflowY:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div style={{fontWeight:800,fontSize:16}}>🔔 {t.notifications}</div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            {unread.length>0&&<button onClick={onMarkAllRead} style={{fontSize:11,color:"#D63864",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>{t.markAllRead}</button>}
+            <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#ddd"}}>✕</button>
+          </div>
+        </div>
+        {myNotifs.length===0&&<div style={{color:"#ccc",fontSize:13,textAlign:"center",padding:"24px 0"}}>{t.noNotifs}</div>}
+        {myNotifs.map((n,i)=>(
+          <div key={n.id||i} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"10px 0",borderBottom:"1px solid #f5f5f5",opacity:n.read?0.5:1}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:n.read?"transparent":"#D63864",flexShrink:0,marginTop:5}}/>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,color:"#555",lineHeight:1.5}}>{n.text}</div>
+              <div style={{fontSize:10,color:"#bbb",marginTop:2}}>{n.date}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── CALENDAR GRID ────────────────────────────────────────────────────────────
 function CalendarGrid({year,month,allCycles,avgLength,avgPeriod,fahLogs,intimateLogs,onDayClick,selectedDay,lang}) {
   const td=todayStr(), days=daysInMonth(year,month), first=firstDow(year,month);
   const cells=[]; for(let i=0;i<first;i++) cells.push(null); for(let d=1;d<=days;d++) cells.push(d);
@@ -249,15 +411,16 @@ function CalendarGrid({year,month,allCycles,avgLength,avgPeriod,fahLogs,intimate
   );
 }
 
-function LogModal({dateStr,log,allCycles,avgLength,avgPeriod,t,lang,actualPeriods,onSave,onMarkStart,onMarkEnd,onClose}) {
+// ─── LOG MODAL ────────────────────────────────────────────────────────────────
+function LogModal({dateStr,log,allCycles,avgLength,avgPeriod,t,lang,actualPeriods,onSave,onTogglePeriodStart,onTogglePeriodEnd,onClose}) {
   const [mood,setMood]=useState(log?.mood||"😊");
   const [syms,setSyms]=useState(log?.symptoms||[]);
   const [note,setNote]=useState(log?.note||"");
   const {status}=getCycleStatus(dateStr,allCycles,avgLength,avgPeriod);
   const s=SC[status]||{};
   const sl=statusLabel(status,t);
-  const isPStart=actualPeriods.some(p=>p.start===dateStr);
-  const isPEnd=actualPeriods.some(p=>p.end===dateStr);
+  const isStart=(actualPeriods||[]).some(p=>p.start===dateStr);
+  const isEnd=(actualPeriods||[]).some(p=>p.end===dateStr);
   return (
     <div style={{position:"fixed",inset:0,background:"#00000077",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"28px 28px 0 0",padding:"22px 18px 40px",width:"100%",maxWidth:480,boxShadow:"0 -8px 40px #0003",maxHeight:"88vh",overflowY:"auto"}}>
@@ -266,8 +429,12 @@ function LogModal({dateStr,log,allCycles,avgLength,avgPeriod,t,lang,actualPeriod
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#ddd"}}>✕</button>
         </div>
         <div style={{display:"flex",gap:8,marginBottom:16}}>
-          <button onClick={onMarkStart} style={{flex:1,padding:"9px 0",borderRadius:12,fontSize:11,fontWeight:600,cursor:"pointer",background:isPStart?"#D63864":"#FDE8EE",color:isPStart?"#fff":"#D63864",border:"none"}}>{t.markPeriodStart}</button>
-          <button onClick={onMarkEnd} style={{flex:1,padding:"9px 0",borderRadius:12,fontSize:11,fontWeight:600,cursor:"pointer",background:isPEnd?"#5B8AF0":"#EEF2FF",color:isPEnd?"#fff":"#5B8AF0",border:"none"}}>{t.markPeriodEnd}</button>
+          <button onClick={onTogglePeriodStart} style={{flex:1,padding:"9px 0",borderRadius:12,fontSize:11,fontWeight:600,cursor:"pointer",border:"none",background:isStart?"#D63864":"#FDE8EE",color:isStart?"#fff":"#D63864"}}>
+            🩸 {isStart?`✓ ${t.markPeriodStart}`:t.markPeriodStart}
+          </button>
+          <button onClick={onTogglePeriodEnd} style={{flex:1,padding:"9px 0",borderRadius:12,fontSize:11,fontWeight:600,cursor:"pointer",border:"none",background:isEnd?"#5B8AF0":"#EEF2FF",color:isEnd?"#fff":"#5B8AF0"}}>
+            ✓ {isEnd?`✓ ${t.markPeriodEnd}`:t.markPeriodEnd}
+          </button>
         </div>
         <div style={{marginBottom:14}}>
           <div style={{fontSize:10,color:"#bbb",fontWeight:700,letterSpacing:0.8,marginBottom:7,textTransform:"uppercase"}}>{t.mood}</div>
@@ -287,6 +454,7 @@ function LogModal({dateStr,log,allCycles,avgLength,avgPeriod,t,lang,actualPeriod
   );
 }
 
+// ─── INTIMATE MODAL ───────────────────────────────────────────────────────────
 function IntimateModal({allCycles,avgLength,avgPeriod,intimateLogs,t,lang,onSave,onClose}) {
   const [date,setDate]=useState(todayStr());
   const [hour,setHour]=useState(22);
@@ -298,7 +466,7 @@ function IntimateModal({allCycles,avgLength,avgPeriod,intimateLogs,t,lang,onSave
   const sl=statusLabel(status,t);
   const lastCi=(intimateLogs||[]).length>0?intimateLogs[0].contraIndex:null;
   const nth=(intimateLogs||[]).filter(x=>x.date===date).length+1;
-  const lastLabel = lang==="zh"?"上次":lang==="th"?"ครั้งก่อน":"Last";
+  const lastLabel=lang==="zh"?"上次":lang==="th"?"ครั้งก่อน":"Last";
   return (
     <div style={{position:"fixed",inset:0,background:"#00000077",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"28px 28px 0 0",padding:"22px 18px 40px",width:"100%",maxWidth:480,boxShadow:"0 -8px 40px #0003",maxHeight:"90vh",overflowY:"auto"}}>
@@ -349,13 +517,50 @@ function IntimateModal({allCycles,avgLength,avgPeriod,intimateLogs,t,lang,onSave
   );
 }
 
+// ─── MESSAGE BUBBLE with translate ───────────────────────────────────────────
+function MsgBubble({ item, myRole, t, lang }) {
+  const [translated, setTranslated] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const isMe = item.from === myRole;
+  const isOther = !isMe;
+
+  const handleTranslate = async () => {
+    if (translated) { setTranslated(null); return; }
+    setLoading(true);
+    const result = await translateText(item.text, lang);
+    setTranslated(result);
+    setLoading(false);
+  };
+
+  return (
+    <div style={{display:"flex",justifyContent:isMe?"flex-end":"flex-start",flexDirection:"column",alignItems:isMe?"flex-end":"flex-start",gap:3}}>
+      <div style={{maxWidth:"76%",background:item.from==="fah"?"linear-gradient(135deg,#FDE8EE,#FFF5F8)":"linear-gradient(135deg,#EEF2FF,#F0F4FF)",borderRadius:item.from==="fah"?"4px 16px 16px 16px":"16px 4px 16px 16px",padding:"8px 12px",fontSize:13,color:"#333"}}>
+        <div style={{fontSize:9,color:"#ccc",marginBottom:3}}>{item.from==="fah"?"🌺 Fah":"🫶 Lei"} · {item.date}</div>
+        {item.text}
+        {translated&&(
+          <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid #eee",fontSize:12,color:"#888",fontStyle:"italic"}}>
+            {translated}
+          </div>
+        )}
+      </div>
+      {/* Show translate button for other person's messages only */}
+      {isOther&&(
+        <button onClick={handleTranslate} style={{fontSize:10,color:"#aaa",background:"none",border:"none",cursor:"pointer",padding:"0 4px"}}>
+          {loading?t.translating:translated?t.translated:t.translate} 🌐
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── DAILY MESSAGES ────────────────────────────────────────────────────────────
 function getDailyMessages(phase, daysLeft, lang) {
   const dL = daysLeft || "?";
   const FAH = {
     zh: {
       ovulation:[`宝，今天是你的排卵日 🌸 身体有没有那种微微酸胀的感觉？很正常的，你辛苦了。今晚我来照顾你 💕`,`今天是你排卵日，我想抱着你，就这样陪着你 🌸`,`宝贝，排卵日到了 🥚 你每天都在认真对待自己的身体，这让我更爱你了 💕`,`排卵日的你特别美 🌸 就是觉得这样的你让我更迷你了 ❤️`,`宝，今天排卵日，可能感觉比平时敏感一点。想撒娇还是想安静，我都配你 💕`,`今天是你的排卵日 🌸 不管我们有没有计划，我都想让你知道你很厉害，我好爱你 💕`,`排卵日到了宝贝 🥚 今晚别吃冷的，我给你准备热汤，就在你旁边陪你 ❤️`,`宝，排卵日你有没有那种特别想被抱着的感觉？我今天就想一直抱着你 🌸💕`],
       "pred-ovulation":[`宝贝，根据你的周期今天差不多是排卵日 🌸 感觉怎么样？💕`,`今天应该是你排卵日附近，有任何感觉都跟我说，不用一个人扛 ❤️`,`预计今天是排卵日，你感觉到了吗？我一直有在留意你的周期 🌸 爱你 💕`],
-      fertHigh:[`宝，这两天是你最特别的时候 🌿 今晚早点回来好不好？❤️`,`易孕高峰期的你，身体特别敏感。今天想要什么就跟我说，我满足你 💕`,`这两天是你的高峰易孕期 🌿 不管我们的计划是什么，我都想好好照顾你。你愿意让我吗？❤️`,`宝贝，排卵高峰来了 🌸 她一个人在记录这些，好辛苦。我想参与进来，陪你一起 💕`,`高峰易孕期 🌿 今晚我来负责让你放松，其他什么都不用想 ❤️`,`宝，这两天少喝冷的，多暖暖的。我今晚想抱着你睡 💕`,`易孕高峰期的你好像格外有魅力 🌿 今天我格外想看你 ❤️`,`这几天是你最特别的时候 🌸 身体在努力，我也在努力——努力让你感受到我的爱 💕`],
+      fertHigh:[`宝，这两天是你最特别的时候 🌿 今晚早点回来好不好？❤️`,`易孕高峰期的你，身体特别敏感。今天想要什么就跟我说，我满足你 💕`,`这两天是你的高峰易孕期 🌿 不管我们的计划是什么，我都想好好照顾你。你愿意让我吗？❤️`,`宝贝，排卵高峰来了 🌸 我想参与进来，陪你一起 💕`,`高峰易孕期 🌿 今晚我来负责让你放松，其他什么都不用想 ❤️`,`宝，这两天少喝冷的，多暖暖的。我今晚想抱着你睡 💕`,`易孕高峰期的你好像格外有魅力 🌿 今天我格外想看你 ❤️`,`这几天是你最特别的时候 🌸 身体在努力，我也在努力——努力让你感受到我的爱 💕`],
       "pred-fertHigh":[`宝贝，预计这两天是你的易孕高峰 🌿 你感觉到什么变化了吗？💕`,`这几天应该是你的高峰期，多注意身体哦 🌸 有我在 ❤️`,`预计高峰易孕期，宝 🌿 我在认真记录你的周期，因为你对我来说很重要 💕`],
       fertMid:[`宝，现在是你的易孕期 🌱 有不舒服就告诉我，别一个人撑着 💕`,`易孕期到了宝贝 🌿 今天有什么我能帮你的？❤️`,`这几天是你的易孕窗口 🌱 我最近总是忍不住想到你 💕`,`宝，易孕期多喝温水，少吃凉的 🌿 我今晚想给你做饭，有没有想吃的？❤️`,`易孕期的你皮肤好像特别好 🌱 你今天很好看。我爱你 💕`,`这几天是你的易孕期 🌿 晚上我帮你按摩好不好？❤️`],
       "pred-fertMid":[`宝贝，预计这几天是你的易孕期 🌱 注意身体，有我在 💕`,`易孕期快到了，我一直在留意你 ❤️`],
@@ -379,7 +584,7 @@ function getDailyMessages(phase, daysLeft, lang) {
       safe:[`${dL} days until your next period babe 📅 How are YOU feeling today? 💕`,`Safe phase babe 😊 Let's do something you've been wanting to do ❤️`,`Babe, ${dL} more days 📅 I love seeing you comfortable and happy 💕`,`${dL} days babe 🌙 Tonight let's go somewhere just the two of us ❤️`,`Safe days babe 😊 Let's fill these ${dL} days with good memories 💕`,`${dL} days until period babe 📅 I want to take you somewhere nice. You deserve to be spoiled 💕`,`Safe phase — ${dL} days babe 🌙 Can we do something tonight, just us? ❤️`,`Babe ${dL} more days 📅 I want to see you smile today 💕`],
     },
     th: {
-      ovulation:[`ที่รัก วันนี้เป็นวันตกไข่ของเธอ 🌸 ร่างกายอาจรู้สึกแปลกๆ นิดหน่อย ฉันอยู่ตรงนี้เสมอ 💕`,`วันตกไข่นะที่รัก 🥚 อยากให้ฉันอยู่ใกล้ๆ ไหม? บอกได้เลย ❤️`,`วันนี้วันตกไข่ที่รัก 🌸 อยากกอดเธอแน่นๆ เลย 💕`,`วันตกไข่ของเธอ 🥚 เธอดูแลร่างกายตัวเองได้ดีมากเลย ฉันรักสิ่งนี้ในตัวเธอ ❤️`,`ที่รัก วันตกไข่มาแล้ว 🌸 คืนนี้อย่าดื่มของเย็นนะ ให้ฉันทำอาหารอุ่นๆ ให้เธอ 💕`],
+      ovulation:[`ที่รัก วันนี้เป็นวันตกไข่ของเธอ 🌸 ร่างกายอาจรู้สึกแปลกๆ นิดหน่อย ฉันอยู่ตรงนี้เสมอ 💕`,`วันตกไข่นะที่รัก 🥚 อยากให้ฉันอยู่ใกล้ๆ ไหม? ❤️`,`วันนี้วันตกไข่ที่รัก 🌸 อยากกอดเธอแน่นๆ เลย 💕`,`วันตกไข่ของเธอ 🥚 เธอดูแลร่างกายตัวเองได้ดีมาก ฉันรักสิ่งนี้ในตัวเธอ ❤️`,`ที่รัก วันตกไข่มาแล้ว 🌸 คืนนี้อย่าดื่มของเย็นนะ ให้ฉันทำอาหารอุ่นๆ ให้เธอ 💕`],
       "pred-ovulation":[`ที่รัก คาดว่าวันนี้น่าจะเป็นวันตกไข่ 🌸 รู้สึกยังไงบ้าง? 💕`,`น่าจะใกล้วันตกไข่แล้วที่รัก 🌿 ฉันติดตามรอบเธออยู่เสมอ ❤️`],
       fertHigh:[`ที่รัก ช่วงนี้เป็นช่วง peak เจริญพันธุ์ 🌿 อยากอยู่ข้างๆ เธอมากขึ้นเลย 💕`,`ช่วงเจริญพันธุ์สูงสุดนะที่รัก 🌸 ฉันแค่อยากอยู่ใกล้เธอคืนนี้ ❤️`,`Peak fertile days ที่รัก 🌿 ฉันคิดถึงเธอตลอดวันเลย 💕`,`ช่วงที่พิเศษที่สุดของเธอ 🌸 ให้ฉันดูแลทุกอย่างคืนนี้ ❤️`,`เจริญพันธุ์สูงสุดที่รัก 🌿 เธอสวยเป็นพิเศษช่วงนี้เลยนะ 💕`],
       "pred-fertHigh":[`คาดว่าช่วงนี้เป็น peak เจริญพันธุ์ที่รัก 🌿 รู้สึกยังไงบ้าง? 💕`],
@@ -433,83 +638,230 @@ function getDailyMessages(phase, daysLeft, lang) {
       safe:[`Fah อยู่ในช่วงปลอดภัย วางแผนทำอะไรสนุกๆ ด้วยกันได้เลย 😊`],
     },
   };
-  const fahLang = FAH[lang]||FAH.en;
-  const leiLang = LEI[lang]||LEI.en;
-  const fahArr  = fahLang[phase]||fahLang.safe||[];
-  const leiArr  = leiLang[phase]||leiLang.safe||[];
-  return { fahMsg: pick(fahArr)||fahArr[0]||"💕", leiMsg: pick(leiArr)||leiArr[0]||"❤️" };
+  const fahLang=FAH[lang]||FAH.en, leiLang=LEI[lang]||LEI.en;
+  const fahArr=fahLang[phase]||fahLang.safe||[], leiArr=leiLang[phase]||leiLang.safe||[];
+  return { fahMsg:pick(fahArr)||fahArr[0]||"💕", leiMsg:pick(leiArr)||leiArr[0]||"❤️" };
 }
 
+// ─── NOTIFICATION BUILDER ─────────────────────────────────────────────────────
+function buildNotif(from, type, t, extra) {
+  const other = from === "lei" ? "fah" : "lei";
+  const fromName = from === "lei" ? "Lei 🫶" : "Fah 🌺";
+  const typeText = {
+    msg: t.notifMsg,
+    intimate: t.notifIntimate,
+    periodStart: t.notifPeriodStart,
+    periodEnd: t.notifPeriodEnd,
+    editCycles: t.notifEditCycles,
+    ai: t.notifAI,
+  }[type] || type;
+  return {
+    id: `${Date.now()}_${Math.random()}`,
+    from, for: other,
+    type, text: `${fromName} ${typeText}${extra ? ` (${extra})` : ""}`,
+    date: todayStr(), read: false,
+  };
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [state,setState]=useState(null);
-  const [syncing,setSyncing]=useState(false);
-  const [vm,setVm]=useState({year:new Date().getFullYear(),month:new Date().getMonth()});
-  const [selDay,setSelDay]=useState(null);
-  const [showLog,setShowLog]=useState(false);
-  const [showIntimate,setShowIntimate]=useState(false);
-  const [tab,setTab]=useState("calendar");
-  const [newMsg,setNewMsg]=useState("");
+  const [myRole, setMyRole] = useState(() => localStorage.getItem(LOCAL_USER_KEY)||null);
+  const [state, setState] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [vm, setVm] = useState({year:new Date().getFullYear(),month:new Date().getMonth()});
+  const [selDay, setSelDay] = useState(null);
+  const [showLog, setShowLog] = useState(false);
+  const [showIntimate, setShowIntimate] = useState(false);
+  const [showEditCycles, setShowEditCycles] = useState(false);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const [tab, setTab] = useState("calendar");
+  const [newMsg, setNewMsg] = useState("");
+  const prevStateRef = useRef(null);
 
   useEffect(()=>{
     const ref=doc(db,"couples",COUPLE_ID);
     getDoc(ref).then(snap=>{ if(!snap.exists()) setDoc(ref,DEFAULT_STATE); });
-    const unsub=onSnapshot(ref,snap=>{ if(snap.exists()) setState(snap.data()); else setState(DEFAULT_STATE); });
+    const unsub=onSnapshot(ref,snap=>{
+      if(snap.exists()) setState(snap.data());
+      else setState(DEFAULT_STATE);
+    });
     return ()=>unsub();
   },[]);
 
-  const save=async(updates)=>{ setSyncing(true); await setDoc(doc(db,"couples",COUPLE_ID),updates,{merge:true}); setSyncing(false); };
+  const save = async (updates, notifType, extra) => {
+    setSyncing(true);
+    const ref = doc(db,"couples",COUPLE_ID);
+    const snap = await getDoc(ref);
+    const current = snap.exists() ? snap.data() : DEFAULT_STATE;
 
-  if(!state) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#FFF4F7",flexDirection:"column",gap:12}}><div style={{fontSize:40}}>🌺</div><div style={{color:"#D63864",fontWeight:700,fontSize:16}}>Loading Yoozoo…</div></div>;
+    let newNotifs = [...(current.notifications||[])];
+    if (notifType && myRole) {
+      newNotifs = [...newNotifs, buildNotif(myRole, notifType, T[current.lang||"en"], extra)];
+      // Keep last 50 notifications
+      if (newNotifs.length > 50) newNotifs = newNotifs.slice(-50);
+      updates.notifications = newNotifs;
+    }
 
-  const {lang,mode,activeUser,actualPeriods,fahLogs,intimateLogs,messages}=state;
-  const t=T[lang]||T.en;
-  const {avgLength,avgPeriod}=computeAdaptiveCycle(actualPeriods);
-  const allCycles=buildAllCycles(actualPeriods,avgLength,avgPeriod);
-  const nextPeriodDate=allCycles.find(c=>!c.actual&&c.start>todayStr())?.start;
-  const daysLeft=nextPeriodDate?diffDays(todayStr(),nextPeriodDate):null;
-  const {status:todayStatus,cd:todayCd}=getCycleStatus(todayStr(),allCycles,avgLength,avgPeriod);
-  const todaySc=SC[todayStatus]||{};
-  const todayProb=calcPregnancyProb(todayStr(),allCycles,avgLength,avgPeriod,intimateLogs);
-  const phaseRc=RC[PHASE_LABEL_MAP[todayStatus]||"safe"]||RC.safe;
-  const phaseVal=PHASE_PROB_MAP[todayStatus]||"~2%";
-  const sl=statusLabel(todayStatus,t);
+    await setDoc(ref, updates, {merge:true});
+    setSyncing(false);
+  };
 
-  const setLang=l=>save({lang:l});
-  const setMode=m=>save({mode:m});
-  const setUser=u=>save({activeUser:u});
-  const saveLog=logData=>{ save({fahLogs:{...(fahLogs||{}),[selDay]:logData}}); setShowLog(false); };
-  const markPeriodStart=()=>{ const d=selDay; if((actualPeriods||[]).some(p=>p.start===d)) return; const newP=[...(actualPeriods||[]),{start:d,end:null,actual:true}].sort((a,b)=>a.start>b.start?1:-1); save({actualPeriods:newP}); };
-  const markPeriodEnd=()=>{ const d=selDay; const newP=(actualPeriods||[]).map(x=>x.start<=d&&!x.end?{...x,end:d}:x); save({actualPeriods:newP}); };
-  const saveIntimate=rec=>{ save({intimateLogs:[...(intimateLogs||[]),rec].sort((a,b)=>a.date>b.date?-1:1)}); setShowIntimate(false); };
-  const sendMsg=()=>{ if(!newMsg.trim()) return; save({messages:[...(messages||[]),{from:activeUser,text:newMsg.trim(),date:todayStr(),isAI:false}]}); setNewMsg(""); };
-  const generateAI=()=>{ const{fahMsg,leiMsg}=getDailyMessages(todayStatus||"safe",daysLeft,lang); save({messages:[...(messages||[]),{from:"lei",text:fahMsg,date:todayStr(),isAI:true,forUser:"fah"},{from:"system",text:leiMsg,date:todayStr(),isAI:true,forUser:"lei"}]}); };
+  const handleRoleSelect = (role, lang) => {
+    localStorage.setItem(LOCAL_USER_KEY, role);
+    setMyRole(role);
+    save({ lang });
+  };
 
-  const monthLabel=(y,m)=>{ const en=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],zh=["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"],th=["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."]; return `${y} ${{en,zh,th}[lang][m]}`; };
+  if (!myRole) return <RoleSelect onSelect={handleRoleSelect} />;
+
+  if (!state) return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#FFF4F7",flexDirection:"column",gap:12}}>
+      <div style={{fontSize:40}}>🌺</div>
+      <div style={{color:"#D63864",fontWeight:700,fontSize:16}}>Loading…</div>
+    </div>
+  );
+
+  const { lang, mode, actualPeriods, fahLogs, intimateLogs, messages, notifications } = state;
+  const t = T[lang] || T.en;
+  const activeUser = myRole;
+
+  const { avgLength, avgPeriod } = computeAdaptiveCycle(actualPeriods);
+  const allCycles = buildAllCycles(actualPeriods, avgLength, avgPeriod);
+  const nextPeriodDate = allCycles.find(c=>!c.actual&&c.start>todayStr())?.start;
+  const daysLeft = nextPeriodDate ? diffDays(todayStr(), nextPeriodDate) : null;
+  const { status:todayStatus, cd:todayCd } = getCycleStatus(todayStr(), allCycles, avgLength, avgPeriod);
+  const todaySc = SC[todayStatus]||{};
+  const todayProb = calcPregnancyProb(todayStr(), allCycles, avgLength, avgPeriod, intimateLogs);
+  const phaseRc = RC[PHASE_LABEL_MAP[todayStatus]||"safe"]||RC.safe;
+  const phaseVal = PHASE_PROB_MAP[todayStatus]||"~2%";
+  const sl = statusLabel(todayStatus, t);
+
+  // Unread notifications for me
+  const myUnread = (notifications||[]).filter(n=>n.for===activeUser&&!n.read);
+  // Which tabs have unread
+  const notifByTab = {
+    messages: myUnread.filter(n=>["msg","ai"].includes(n.type)).length,
+    intimate: myUnread.filter(n=>n.type==="intimate").length,
+    calendar: myUnread.filter(n=>["periodStart","periodEnd","editCycles"].includes(n.type)).length,
+  };
+  const totalUnread = myUnread.length;
+
+  const setLang = l => save({lang:l});
+  const setMode = m => save({mode:m});
+
+  const saveLog = logData => { save({fahLogs:{...(fahLogs||{}),[selDay]:logData}}); setShowLog(false); };
+
+  const togglePeriodStart = () => {
+    const d = selDay;
+    const already = (actualPeriods||[]).find(p=>p.start===d);
+    let newP;
+    if (already) {
+      newP = (actualPeriods||[]).filter(p=>p.start!==d);
+    } else {
+      newP = [...(actualPeriods||[]), {start:d,end:null,actual:true}].sort((a,b)=>a.start>b.start?1:-1);
+    }
+    save({actualPeriods:newP}, "periodStart", d);
+  };
+
+  const togglePeriodEnd = () => {
+    const d = selDay;
+    const alreadyEnd = (actualPeriods||[]).find(p=>p.end===d);
+    let newP;
+    if (alreadyEnd) {
+      newP = (actualPeriods||[]).map(p=>p.end===d?{...p,end:null}:p);
+    } else {
+      newP = (actualPeriods||[]).map(x=>x.start<=d&&!x.end?{...x,end:d}:x);
+    }
+    save({actualPeriods:newP}, "periodEnd", d);
+  };
+
+  const saveIntimate = rec => {
+    save({intimateLogs:[...(intimateLogs||[]),rec].sort((a,b)=>a.date>b.date?-1:1)}, "intimate", rec.date);
+    setShowIntimate(false);
+  };
+
+  const sendMsg = () => {
+    if (!newMsg.trim()) return;
+    const newMsgObj = {from:activeUser,text:newMsg.trim(),date:todayStr(),isAI:false,id:`msg_${Date.now()}`};
+    save({messages:[...(messages||[]),newMsgObj]}, "msg");
+    setNewMsg("");
+  };
+
+  const generateAI = () => {
+    const{fahMsg,leiMsg}=getDailyMessages(todayStatus||"safe",daysLeft,lang);
+    save({messages:[...(messages||[]),
+      {from:"lei",text:fahMsg,date:todayStr(),isAI:true,forUser:"fah",id:`ai_${Date.now()}`},
+      {from:"system",text:leiMsg,date:todayStr(),isAI:true,forUser:"lei",id:`ai2_${Date.now()}`},
+    ]}, "ai");
+  };
+
+  const markAllRead = () => {
+    const updated = (notifications||[]).map(n=>n.for===activeUser?{...n,read:true}:n);
+    save({notifications:updated});
+    setShowNotifs(false);
+  };
+
+  // Mark tab notifications as read when entering tab
+  const handleTabChange = (newTab) => {
+    setTab(newTab);
+    const types = { messages:["msg","ai"], intimate:["intimate"], calendar:["periodStart","periodEnd","editCycles"] }[newTab]||[];
+    if (types.length > 0) {
+      const updated = (notifications||[]).map(n=>n.for===activeUser&&types.includes(n.type)?{...n,read:true}:n);
+      save({notifications:updated});
+    }
+  };
+
+  const monthLabel=(y,m)=>{
+    const en=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],zh=["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"],th=["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+    return `${y} ${{en,zh,th}[lang][m]}`;
+  };
   const visibleMessages=(messages||[]).filter(m=>!m.isAI||m.forUser===activeUser||!m.forUser);
-  const TABS=[{id:"calendar",icon:"📅",label:t.calendar},{id:"stats",icon:"📊",label:t.stats},{id:"intimate",icon:"♥",label:t.intimate},{id:"messages",icon:"💌",label:t.messages}];
+
+  const TABS=[
+    {id:"calendar",icon:"📅",label:t.calendar},
+    {id:"stats",icon:"📊",label:t.stats},
+    {id:"intimate",icon:"♥",label:t.intimate},
+    {id:"messages",icon:"💌",label:t.messages},
+  ];
 
   return (
     <div style={{minHeight:"100vh",background:"linear-gradient(150deg,#FFF4F7 0%,#F0F4FF 60%,#F4FFF9 100%)",fontFamily:"'PingFang SC','Hiragino Sans GB','Noto Sans Thai',sans-serif",maxWidth:480,margin:"0 auto",paddingBottom:88}}>
+
+      {/* HEADER */}
       <div style={{background:"linear-gradient(135deg,#B52050 0%,#D63864 45%,#F07090 100%)",padding:"env(safe-area-inset-top,16px) 16px 26px",borderRadius:"0 0 34px 34px",boxShadow:"0 8px 36px #D6386444"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-          <div><div style={{color:"#fff8",fontSize:9,letterSpacing:1.5,textTransform:"uppercase"}}>Private · For Two</div><div style={{color:"#fff",fontWeight:900,fontSize:20}}>{t.appName} <span style={{fontWeight:300,fontSize:13}}>{t.tagline}</span></div></div>
+          <div>
+            <div style={{color:"#fff8",fontSize:9,letterSpacing:1.5,textTransform:"uppercase"}}>{activeUser==="lei"?"🫶 Lei":"🌺 Fah"} · Private</div>
+            <div style={{color:"#fff",fontWeight:900,fontSize:20}}>{t.appName} <span style={{fontWeight:300,fontSize:13}}>{t.tagline}</span></div>
+          </div>
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
-            <div style={{display:"flex",gap:3,background:"#ffffff1A",borderRadius:12,padding:3}}>{["zh","en","th"].map(l=><LangPill key={l} lang={l} cur={lang} set={setLang}/>)}</div>
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              {/* Notification bell */}
+              <button onClick={()=>setShowNotifs(true)} style={{position:"relative",background:"#ffffff22",border:"none",borderRadius:10,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>
+                🔔
+                {totalUnread>0&&<span style={{position:"absolute",top:-2,right:-2,background:"#FF3B30",color:"#fff",borderRadius:10,fontSize:9,fontWeight:700,minWidth:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{totalUnread}</span>}
+              </button>
+              <div style={{display:"flex",gap:3,background:"#ffffff1A",borderRadius:12,padding:3}}>
+                {["zh","en","th"].map(l=><LangPill key={l} lang={l} cur={lang} set={setLang}/>)}
+              </div>
+            </div>
             <div style={{fontSize:9,color:"#ffffff88"}}>{syncing?t.syncing:t.synced}</div>
           </div>
         </div>
+
         <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
-          {[{id:"lei",avatar:"🫶",name:"Lei"},{id:"fah",avatar:"🌺",name:"Fah"}].map(u=>(
-            <button key={u.id} onClick={()=>setUser(u.id)} style={{display:"flex",alignItems:"center",gap:6,background:activeUser===u.id?"#fff":"#ffffff22",border:"none",borderRadius:20,padding:"5px 14px",cursor:"pointer",color:activeUser===u.id?"#D63864":"#fff",fontWeight:activeUser===u.id?700:400,fontSize:13,transition:"all 0.2s"}}><span style={{fontSize:15}}>{u.avatar}</span>{u.name}</button>
-          ))}
+          <div style={{fontSize:12,color:"#fffc"}}>{activeUser==="lei"?"🫶 Lei":"🌺 Fah"}</div>
           <div style={{marginLeft:"auto",display:"flex",gap:3,background:"#ffffff1A",borderRadius:12,padding:3}}>
-            {["avoid","conceive"].map(m=><button key={m} onClick={()=>setMode(m)} style={{padding:"3px 10px",borderRadius:9,border:"none",background:mode===m?"#fff":"transparent",color:mode===m?"#D63864":"#ffffff88",fontWeight:mode===m?700:400,fontSize:11,cursor:"pointer"}}>{m==="conceive"?t.modeConceive:t.modeAvoid}</button>)}
+            {["avoid","conceive"].map(m=>(
+              <button key={m} onClick={()=>setMode(m)} style={{padding:"3px 10px",borderRadius:9,border:"none",background:mode===m?"#fff":"transparent",color:mode===m?"#D63864":"#ffffff88",fontWeight:mode===m?700:400,fontSize:11,cursor:"pointer"}}>{m==="conceive"?t.modeConceive:t.modeAvoid}</button>
+            ))}
           </div>
         </div>
+
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
           <div style={{background:"#ffffff22",borderRadius:14,padding:"10px 10px"}}>
             <div style={{color:"#fffc",fontSize:9,marginBottom:3,letterSpacing:0.3}}>{t.nextPeriod}</div>
-            <div style={{color:"#fff",fontWeight:700,fontSize:13}}>{daysLeft===0?t.today:daysLeft===1?"Tomorrow":daysLeft?`${daysLeft} ${t.daysLater}`:"–"}</div>
+            <div style={{color:"#fff",fontWeight:700,fontSize:13}}>{daysLeft===0?t.today:daysLeft===1?t.tomorrow:daysLeft?`${daysLeft} ${t.daysLater}`:"–"}</div>
           </div>
           <div style={{background:todaySc.bg?`${todaySc.bg}dd`:"#ffffff22",borderRadius:14,padding:"10px 10px"}}>
             <div style={{color:todaySc.fg||"#fffc",fontSize:9,marginBottom:2,letterSpacing:0.3}}>{t.cycleDay}</div>
@@ -519,16 +871,28 @@ export default function App() {
           <div style={{background:`${phaseRc.bg}dd`,borderRadius:14,padding:"8px 10px"}}>
             <div style={{color:phaseRc.fg,fontSize:9,marginBottom:2,letterSpacing:0.3}}>{t.pregnancyChance}</div>
             <div style={{color:phaseRc.fg,fontWeight:700,fontSize:13}}>{phaseVal}</div>
-            {todayProb.prob>0&&<div style={{color:RC[todayProb.label]?.fg||phaseRc.fg,fontSize:9,marginTop:1,fontWeight:600}}>今日~{todayProb.prob}%</div>}
+            {todayProb.prob>0&&<div style={{color:RC[todayProb.label]?.fg||phaseRc.fg,fontSize:9,marginTop:1,fontWeight:600}}>~{todayProb.prob}%</div>}
           </div>
         </div>
       </div>
 
+      {/* TABS with red dots */}
       <div style={{display:"flex",background:"#fff",margin:"12px 12px 0",borderRadius:16,padding:4,boxShadow:"0 2px 12px #0001"}}>
-        {TABS.map(({id,icon,label})=><button key={id} onClick={()=>setTab(id)} style={{flex:1,border:"none",borderRadius:12,padding:"8px 0",background:tab===id?"#D63864":"transparent",color:tab===id?"#fff":"#aaa",fontWeight:tab===id?700:400,fontSize:10,cursor:"pointer",transition:"all 0.2s",lineHeight:1.6}}>{icon}<br/>{label}</button>)}
+        {TABS.map(({id,icon,label})=>{
+          const dot = notifByTab[id]||0;
+          return (
+            <button key={id} onClick={()=>handleTabChange(id)} style={{flex:1,border:"none",borderRadius:12,padding:"8px 0",background:tab===id?"#D63864":"transparent",color:tab===id?"#fff":"#aaa",fontWeight:tab===id?700:400,fontSize:10,cursor:"pointer",transition:"all 0.2s",lineHeight:1.6,position:"relative"}}>
+              {icon}
+              {dot>0&&<span style={{position:"absolute",top:4,right:"calc(50% - 12px)",background:"#FF3B30",color:"#fff",borderRadius:10,fontSize:8,fontWeight:700,minWidth:14,height:14,display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"0 2px"}}>{dot}</span>}
+              <br/>{label}
+            </button>
+          );
+        })}
       </div>
 
       <div style={{padding:"12px 12px 0"}}>
+
+        {/* CALENDAR */}
         {tab==="calendar"&&(
           <div>
             <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>
@@ -543,21 +907,28 @@ export default function App() {
               <CalendarGrid year={vm.year} month={vm.month} allCycles={allCycles} avgLength={avgLength} avgPeriod={avgPeriod} fahLogs={fahLogs} intimateLogs={intimateLogs} onDayClick={d=>{setSelDay(d);setShowLog(true);}} selectedDay={selDay} lang={lang}/>
             </div>
             <div style={{marginTop:10,background:"#fff",borderRadius:16,padding:"12px 14px",boxShadow:"0 2px 10px #0001"}}>
-              <div style={{fontSize:11,fontWeight:700,marginBottom:6,color:"#555"}}>📐 Adaptive Cycle</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#555"}}>📐 Adaptive Cycle</div>
+                <button onClick={()=>setShowEditCycles(true)} style={{background:"#FDE8EE",color:"#D63864",border:"none",borderRadius:10,padding:"4px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>✏️ {t.editCycles}</button>
+              </div>
               <div style={{display:"flex",gap:10}}>
                 {[{label:t.avgCycle,value:`${avgLength}d`,c:"#D63864",bg:"#FDE8EE"},{label:t.avgPeriod,value:`${avgPeriod}d`,c:"#2BB89A",bg:"#E8F8F4"},{label:t.totalCycles,value:`${(actualPeriods||[]).length}`,c:"#5B8AF0",bg:"#EEF2FF"}].map(x=>(
-                  <div key={x.label} style={{flex:1,background:x.bg,borderRadius:10,padding:"8px 10px"}}><div style={{fontSize:9,color:x.c,fontWeight:700}}>{x.label}</div><div style={{fontSize:18,fontWeight:800,color:x.c}}>{x.value}</div></div>
+                  <div key={x.label} style={{flex:1,background:x.bg,borderRadius:10,padding:"8px 10px"}}>
+                    <div style={{fontSize:9,color:x.c,fontWeight:700}}>{x.label}</div>
+                    <div style={{fontSize:18,fontWeight:800,color:x.c}}>{x.value}</div>
+                  </div>
                 ))}
               </div>
-              <div style={{marginTop:6,fontSize:10,color:"#aaa"}}>✓ {t.corrected} · {(actualPeriods||[]).length} actual periods</div>
+              <div style={{marginTop:6,fontSize:10,color:"#aaa"}}>✓ {t.corrected}</div>
             </div>
           </div>
         )}
 
+        {/* STATS */}
         {tab==="stats"&&(
           <div>
             <div style={{background:"#fff",borderRadius:20,padding:16,boxShadow:"0 2px 12px #0001",marginBottom:12}}>
-              <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📊 Pregnancy Probability Log</div>
+              <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📊 {lang==="zh"?"怀孕概率记录":lang==="th"?"บันทึกโอกาสตั้งครรภ์":"Pregnancy Probability Log"}</div>
               {(intimateLogs||[]).slice(0,10).map((rec,i)=>{
                 const p=calcPregnancyProb(rec.date,allCycles,avgLength,avgPeriod,intimateLogs);
                 const rc=RC[p.label]||RC.safe;
@@ -579,10 +950,10 @@ export default function App() {
                   </div>
                 );
               })}
-              {!(intimateLogs||[]).length&&<div style={{color:"#ddd",fontSize:13,textAlign:"center",padding:"20px 0"}}>No logs yet</div>}
+              {!(intimateLogs||[]).length&&<div style={{color:"#ddd",fontSize:13,textAlign:"center",padding:"20px 0"}}>{lang==="zh"?"暂无记录":lang==="th"?"ยังไม่มีบันทึก":"No logs yet"}</div>}
             </div>
             <div style={{background:"#fff",borderRadius:20,padding:16,boxShadow:"0 2px 12px #0001"}}>
-              <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>😊 Fah's Recent Logs</div>
+              <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>😊 {lang==="zh"?"Fah 的近期记录":lang==="th"?"บันทึกล่าสุดของ Fah":"Fah's Recent Logs"}</div>
               {Object.entries(fahLogs||{}).sort((a,b)=>a[0]<b[0]?1:-1).slice(0,8).map(([date,log])=>(
                 <div key={date} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"7px 0",borderBottom:"1px solid #f5f5f5"}}>
                   <span style={{fontSize:20}}>{log.mood}</span>
@@ -597,20 +968,21 @@ export default function App() {
           </div>
         )}
 
+        {/* INTIMATE */}
         {tab==="intimate"&&(
           <div>
             <button onClick={()=>setShowIntimate(true)} style={{width:"100%",background:"linear-gradient(135deg,#F585A5,#D63864)",color:"#fff",border:"none",borderRadius:16,padding:"13px 0",fontSize:14,fontWeight:700,cursor:"pointer",marginBottom:12,boxShadow:"0 4px 18px #D6386444"}}>♥ {t.addIntimate}</button>
             <div style={{background:todaySc.bg||"#f8f8f8",border:`1.5px solid ${todaySc.fg||"#eee"}33`,borderRadius:16,padding:"12px 14px",marginBottom:12}}>
-              <div style={{fontSize:11,fontWeight:700,color:todaySc.fg||"#aaa",marginBottom:2}}>{mode==="conceive"?"🌱":"🛡️"} Today · {sl||"–"} · {phaseVal}</div>
+              <div style={{fontSize:11,fontWeight:700,color:todaySc.fg||"#aaa",marginBottom:2}}>{mode==="conceive"?"🌱":"🛡️"} {lang==="zh"?"今天":lang==="th"?"วันนี้":"Today"} · {sl||"–"} · {phaseVal}</div>
               <div style={{fontSize:11,color:"#999"}}>
                 {mode==="conceive"
-                  ?(["ovulation","pred-ovulation"].includes(todayStatus)?"✨ Best day! Peak fertility ~30%":["fertHigh","pred-fertHigh"].includes(todayStatus)?"🌿 High fertile — great timing ~25%":["fertMid","pred-fertMid"].includes(todayStatus)?"🌱 Fertile window ~10%":["postOv","pred-postOv"].includes(todayStatus)?"⏳ Just past peak ~8%":todayStatus==="period"?"🌸 Period time — very low":"💤 Lower fertility ~2%")
-                  :(["ovulation","pred-ovulation"].includes(todayStatus)?"⚠️ Peak risk — always protect ~30%":["fertHigh","pred-fertHigh"].includes(todayStatus)?"⚡ High risk — use protection ~25%":["fertMid","pred-fertMid"].includes(todayStatus)?"⚡ Elevated risk ~10%":["postOv","pred-postOv"].includes(todayStatus)?"🛡️ Moderate risk ~8%":todayStatus==="period"?"✅ Lower risk, still protect":"✅ Lower risk ~2%")}
+                  ?(["ovulation","pred-ovulation"].includes(todayStatus)?(lang==="zh"?"✨ 最佳时机！排卵高峰 ~30%":lang==="th"?"✨ วันที่ดีที่สุด! ~30%":"✨ Best day! Peak fertility ~30%"):["fertHigh","pred-fertHigh"].includes(todayStatus)?(lang==="zh"?"🌿 高易孕期 ~25%":lang==="th"?"🌿 เจริญพันธุ์สูง ~25%":"🌿 High fertile ~25%"):["fertMid","pred-fertMid"].includes(todayStatus)?(lang==="zh"?"🌱 易孕期 ~10%":lang==="th"?"🌱 วันเจริญพันธุ์ ~10%":"🌱 Fertile window ~10%"):["postOv","pred-postOv"].includes(todayStatus)?(lang==="zh"?"⏳ 排卵后 ~8%":lang==="th"?"⏳ หลังตกไข่ ~8%":"⏳ Post-ovulation ~8%"):todayStatus==="period"?(lang==="zh"?"🌸 经期中 概率很低":lang==="th"?"🌸 ช่วงประจำเดือน":"🌸 Period time — very low"):(lang==="zh"?"💤 低生育期 ~2%":lang==="th"?"💤 ความสามารถต่ำ ~2%":"💤 Lower fertility ~2%"))
+                  :(["ovulation","pred-ovulation"].includes(todayStatus)?(lang==="zh"?"⚠️ 最高风险 务必避孕 ~30%":lang==="th"?"⚠️ เสี่ยงสูงสุด ต้องคุมกำเนิด ~30%":"⚠️ Peak risk — always protect ~30%"):["fertHigh","pred-fertHigh"].includes(todayStatus)?(lang==="zh"?"⚡ 高风险 请避孕 ~25%":lang==="th"?"⚡ เสี่ยงสูง ~25%":"⚡ High risk — use protection ~25%"):["fertMid","pred-fertMid"].includes(todayStatus)?(lang==="zh"?"⚡ 中等风险 ~10%":lang==="th"?"⚡ เสี่ยงปานกลาง ~10%":"⚡ Elevated risk ~10%"):["postOv","pred-postOv"].includes(todayStatus)?(lang==="zh"?"🛡️ 中等风险 ~8%":lang==="th"?"🛡️ เสี่ยงปานกลาง ~8%":"🛡️ Moderate risk ~8%"):todayStatus==="period"?(lang==="zh"?"✅ 较低风险 仍需避孕":lang==="th"?"✅ เสี่ยงต่ำ แต่ยังต้องคุมกำเนิด":"✅ Lower risk, still protect"):(lang==="zh"?"✅ 低风险期 ~2%":lang==="th"?"✅ เสี่ยงต่ำ ~2%":"✅ Lower risk ~2%"))}
               </div>
             </div>
             <div style={{background:"#fff",borderRadius:20,padding:16,boxShadow:"0 2px 12px #0001"}}>
-              <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>♥ History</div>
-              {!(intimateLogs||[]).length&&<div style={{color:"#ddd",fontSize:13,textAlign:"center",padding:"20px 0"}}>No records yet</div>}
+              <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>♥ {lang==="zh"?"历史记录":lang==="th"?"ประวัติ":"History"}</div>
+              {!(intimateLogs||[]).length&&<div style={{color:"#ddd",fontSize:13,textAlign:"center",padding:"20px 0"}}>{lang==="zh"?"暂无记录":lang==="th"?"ยังไม่มีบันทึก":"No records yet"}</div>}
               {(intimateLogs||[]).map((rec,i)=>{
                 const p=calcPregnancyProb(rec.date,allCycles,avgLength,avgPeriod,intimateLogs);
                 const rc=RC[p.label]||RC.safe;
@@ -636,6 +1008,7 @@ export default function App() {
           </div>
         )}
 
+        {/* MESSAGES */}
         {tab==="messages"&&(
           <div>
             <div style={{background:"#fff",borderRadius:20,padding:14,boxShadow:"0 2px 12px #0001",marginBottom:10}}>
@@ -645,26 +1018,23 @@ export default function App() {
               </div>
               {(messages||[]).filter(m=>m.isAI&&m.forUser===activeUser).slice(-1).map((m,i)=>(
                 <div key={i} style={{background:activeUser==="fah"?"#FFF5F8":"#F0F4FF",borderRadius:14,padding:"10px 12px",fontSize:13,color:"#444",lineHeight:1.7}}>
-                  <div style={{fontSize:9,color:"#ccc",marginBottom:4}}>{activeUser==="fah"?"🫶 Lei":"🤖 Assistant"} · {m.date}</div>
+                  <div style={{fontSize:9,color:"#ccc",marginBottom:4}}>{activeUser==="fah"?"🫶 Lei":"🤖"} · {m.date}</div>
                   {m.text}
                 </div>
               ))}
-              {!(messages||[]).filter(m=>m.isAI&&m.forUser===activeUser).length&&<div style={{fontSize:12,color:"#ccc",textAlign:"center",padding:"8px 0"}}>Tap button to get today's message ✨</div>}
+              {!(messages||[]).filter(m=>m.isAI&&m.forUser===activeUser).length&&<div style={{fontSize:12,color:"#ccc",textAlign:"center",padding:"8px 0"}}>{t.refreshAI}</div>}
             </div>
             <div style={{background:"#fff",borderRadius:20,padding:14,boxShadow:"0 2px 12px #0001"}}>
               <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>💌 {t.messages}</div>
               <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:300,overflowY:"auto"}}>
                 {visibleMessages.filter(m=>!m.isAI).map((item,i)=>(
-                  <div key={i} style={{display:"flex",justifyContent:item.from==="fah"?"flex-start":"flex-end"}}>
-                    <div style={{maxWidth:"76%",background:item.from==="fah"?"linear-gradient(135deg,#FDE8EE,#FFF5F8)":"linear-gradient(135deg,#EEF2FF,#F0F4FF)",borderRadius:item.from==="fah"?"4px 16px 16px 16px":"16px 4px 16px 16px",padding:"8px 12px",fontSize:13,color:"#333"}}>
-                      <div style={{fontSize:9,color:"#ccc",marginBottom:3}}>{item.from==="fah"?"🌺 Fah":"🫶 Lei"} · {item.date}</div>
-                      {item.text}
-                    </div>
-                  </div>
+                  <MsgBubble key={item.id||i} item={item} myRole={activeUser} t={t} lang={lang}/>
                 ))}
               </div>
               <div style={{display:"flex",gap:8,marginTop:12}}>
-                <input value={newMsg} onChange={e=>setNewMsg(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMsg()} placeholder={activeUser==="lei"?t.msgPlaceholderLei:t.msgPlaceholderFah} style={{flex:1,border:"1.5px solid #eee",borderRadius:12,padding:"10px 13px",fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+                <input value={newMsg} onChange={e=>setNewMsg(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMsg()}
+                  placeholder={activeUser==="lei"?t.msgPlaceholderLei:t.msgPlaceholderFah}
+                  style={{flex:1,border:"1.5px solid #eee",borderRadius:12,padding:"10px 13px",fontSize:13,outline:"none",fontFamily:"inherit"}}/>
                 <button onClick={sendMsg} style={{background:"linear-gradient(135deg,#D63864,#F07090)",color:"#fff",border:"none",borderRadius:12,padding:"0 16px",fontSize:16,cursor:"pointer"}}>➤</button>
               </div>
             </div>
@@ -672,8 +1042,10 @@ export default function App() {
         )}
       </div>
 
-      {showLog&&<LogModal dateStr={selDay} log={(fahLogs||{})[selDay]} allCycles={allCycles} avgLength={avgLength} avgPeriod={avgPeriod} t={t} lang={lang} actualPeriods={actualPeriods||[]} onSave={saveLog} onMarkStart={markPeriodStart} onMarkEnd={markPeriodEnd} onClose={()=>setShowLog(false)}/>}
+      {showLog&&<LogModal dateStr={selDay} log={(fahLogs||{})[selDay]} allCycles={allCycles} avgLength={avgLength} avgPeriod={avgPeriod} t={t} lang={lang} actualPeriods={actualPeriods||[]} onSave={saveLog} onTogglePeriodStart={togglePeriodStart} onTogglePeriodEnd={togglePeriodEnd} onClose={()=>setShowLog(false)}/>}
       {showIntimate&&<IntimateModal allCycles={allCycles} avgLength={avgLength} avgPeriod={avgPeriod} intimateLogs={intimateLogs||[]} t={t} lang={lang} onSave={saveIntimate} onClose={()=>setShowIntimate(false)}/>}
+      {showEditCycles&&<EditCyclesModal actualPeriods={actualPeriods||[]} t={t} onSave={newP=>save({actualPeriods:newP},"editCycles")} onClose={()=>setShowEditCycles(false)}/>}
+      {showNotifs&&<NotifPanel notifications={notifications||[]} myRole={activeUser} lang={lang} t={t} onMarkAllRead={markAllRead} onClose={()=>setShowNotifs(false)}/>}
     </div>
   );
 }
