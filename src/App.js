@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { db } from "./firebase";
 import { doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
 
 const COUPLE_ID = "lei-fah-2026";
 const LOCAL_USER_KEY = "yoozoo_my_role";
-const LOCAL_SEEN_KEY = "yoozoo_last_seen";
+
 
 // ─── i18n ─────────────────────────────────────────────────────────────────────
 const T = {
@@ -676,7 +676,7 @@ export default function App() {
   const [showNotifs, setShowNotifs] = useState(false);
   const [tab, setTab] = useState("calendar");
   const [newMsg, setNewMsg] = useState("");
-  const prevStateRef = useRef(null);
+  
 
   useEffect(()=>{
     const ref=doc(db,"couples",COUPLE_ID);
