@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db } from "./firebase";
 import { doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
 
@@ -246,17 +246,14 @@ const DEFAULT_STATE = {
 
 // ─── TRANSLATE via Claude API ─────────────────────────────────────────────────
 async function translateText(text, targetLang) {
-  const langName = { zh:"Simplified Chinese", en:"English", th:"Thai" }[targetLang] || "English";
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({
-        model:"claude-sonnet-4-20250514", max_tokens:1000,
-        messages:[{ role:"user", content:`Translate the following text to ${langName}. Return only the translated text, nothing else:\n\n${text}` }],
-      }),
+    const res = await fetch("/api/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, targetLang }),
     });
     const d = await res.json();
-    return d.content?.[0]?.text || text;
+    return d.translated || text;
   } catch { return text; }
 }
 
@@ -1146,10 +1143,11 @@ export default function App() {
             </div>
             <div style={{background:"#fff",borderRadius:20,padding:14,boxShadow:"0 2px 12px #0001"}}>
               <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>💌 {t.messages}</div>
-              <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:300,overflowY:"auto"}}>
+              <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:420,overflowY:"auto"}} ref={el=>{if(el)el.scrollTop=el.scrollHeight}}>
                 {visibleMessages.filter(m=>!m.isAI).map((item,i)=>(
                   <MsgBubble key={item.id||i} item={item} myRole={activeUser} t={t} lang={lang}/>
                 ))}
+                <div ref={el=>el?.scrollIntoView?.({block:"end"})}/>
               </div>
               <div style={{display:"flex",gap:8,marginTop:12}}>
                 <input value={newMsg} onChange={e=>setNewMsg(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMsg()}
