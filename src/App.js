@@ -600,7 +600,9 @@ function MsgBubble({ item, myRole, t, lang }) {
     if (translated) { setTranslated(null); return; }
     setLoading(true);
     // Logic: zh→en, en/th→zh
-    const translateTo = lang === "zh" ? "en" : "zh";
+    // Lei reads Fah's messages → translate to Chinese
+    // Fah reads Lei's messages → translate to English
+    const translateTo = myRole === "lei" ? "zh" : "en";
     const result = await translateText(item.text, translateTo);
     setTranslated(result);
     setLoading(false);
