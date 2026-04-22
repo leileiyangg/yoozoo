@@ -247,13 +247,12 @@ const DEFAULT_STATE = {
 // ─── TRANSLATE via Claude API ─────────────────────────────────────────────────
 async function translateText(text, targetLang) {
   try {
-    const res = await fetch("/api/translate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, targetLang }),
-    });
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+    const res = await fetch(url);
     const d = await res.json();
-    return d.translated || text;
+    // Google returns nested arrays: [[["translated","original",...],...],...]
+    const translated = d?.[0]?.map(x=>x?.[0]).filter(Boolean).join("") || text;
+    return translated;
   } catch { return text; }
 }
 
