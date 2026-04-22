@@ -247,12 +247,12 @@ const DEFAULT_STATE = {
 // ─── TRANSLATE via Claude API ─────────────────────────────────────────────────
 async function translateText(text, targetLang) {
   try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+    const langMap = { zh:"zh-CN", en:"en", th:"th" };
+    const tl = langMap[targetLang] || "en";
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|${tl}`;
     const res = await fetch(url);
     const d = await res.json();
-    // Google returns nested arrays: [[["translated","original",...],...],...]
-    const translated = d?.[0]?.map(x=>x?.[0]).filter(Boolean).join("") || text;
-    return translated;
+    return d?.responseData?.translatedText || text;
   } catch { return text; }
 }
 
@@ -870,6 +870,9 @@ export default function App() {
     const newMsgObj = {from:activeUser,text:newMsg.trim(),date:todayStr(),isAI:false,id:`msg_${Date.now()}`};
     save({messages:[...(messages||[]),newMsgObj]}, "msg");
     setNewMsg("");
+    setTimeout(() => {
+      document.getElementById("msg-bottom")?.scrollIntoView({ block:"end" });
+    }, 200);
   };
 
   const generateAI = () => {
@@ -889,6 +892,11 @@ export default function App() {
   // Mark tab notifications as read when entering tab
   const handleTabChange = (newTab) => {
     setTab(newTab);
+    if (newTab === "messages") {
+      setTimeout(() => {
+        document.getElementById("msg-bottom")?.scrollIntoView({ block:"end" });
+      }, 100);
+    }
     const types = { messages:["msg","ai"], intimate:["intimate"], calendar:["periodStart","periodEnd","editCycles"] }[newTab]||[];
     if (types.length > 0) {
       const updated = (notifications||[]).map(n=>n.for===activeUser&&types.includes(n.type)?{...n,read:true}:n);
@@ -1142,11 +1150,11 @@ export default function App() {
             </div>
             <div style={{background:"#fff",borderRadius:20,padding:14,boxShadow:"0 2px 12px #0001"}}>
               <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>💌 {t.messages}</div>
-              <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:420,overflowY:"auto"}} ref={el=>{if(el)el.scrollTop=el.scrollHeight}}>
+              <div id="msg-list" style={{display:"flex",flexDirection:"column",gap:8,maxHeight:420,overflowY:"auto"}}>
                 {visibleMessages.filter(m=>!m.isAI).map((item,i)=>(
                   <MsgBubble key={item.id||i} item={item} myRole={activeUser} t={t} lang={lang}/>
                 ))}
-                <div ref={el=>el?.scrollIntoView?.({block:"end"})}/>
+                <div id="msg-bottom"/>
               </div>
               <div style={{display:"flex",gap:8,marginTop:12}}>
                 <input value={newMsg} onChange={e=>setNewMsg(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMsg()}
